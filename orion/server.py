@@ -236,6 +236,27 @@ def ensure_local_ollama_running():
 # MULTI-ENGINE LOCAL MODEL DISCOVERY & INFERENCE
 # ==============================================================================
 
+def compute_resource_tier(size_bytes: int = 0, name: str = "") -> str:
+    """Compute resource demand level (LOW / MEDIUM / HIGH) based on model size or parameter scale."""
+    gb = (size_bytes / (1024 ** 3)) if size_bytes > 0 else 0
+    name_lower = name.lower()
+    
+    if gb > 0:
+        if gb >= 10.0:
+            return "HIGH"
+        elif gb >= 4.0:
+            return "MEDIUM"
+        else:
+            return "LOW"
+            
+    # Fallback heuristics based on parameter indicators in name
+    if any(k in name_lower for k in ["30b", "32b", "33b", "70b", "72b", "mixtral", "command-r"]):
+        return "HIGH"
+    elif any(k in name_lower for k in ["7b", "8b", "13b", "14b", "llama3", "llava", "mistral", "gemma:7b", "qwen2.5"]):
+        return "MEDIUM"
+    else:
+        return "LOW"
+
 async def discover_local_models():
     """Scan all active endpoints (Ollama, LM Studio, llama.cpp, etc.) for models."""
     models = []
@@ -266,10 +287,21 @@ async def discover_local_models():
                         data = res.json()
                         for m in data.get("models", []):
                             name = m.get("name", "")
+                            size = m.get("size", 0)
+                            tier = compute_resource_tier(size, name)
+                            model_entry = {
+                                "name": name,
+                                "size": size,
+                                "size_gb": round(size / (1024 ** 3), 1) if size else None,
+                                "resource_tier": tier,
+                                "label": f"{name} [{tier}]",
+                                "endpoint": base_url,
+                                "type": "ollama"
+                            }
                             if any(v in name.lower() for v in ["llava", "vision", "moondream", "bakllava", "minicpm", "vl"]):
-                                vision_models.append({"name": name, "endpoint": base_url, "type": "ollama"})
+                                vision_models.append(model_entry)
                             else:
-                                models.append({"name": name, "endpoint": base_url, "type": "ollama"})
+                                models.append(model_entry)
                 
                 elif api_type == "openai":
                     models_url = f"{base_url}/models" if not base_url.endswith("/v1") else f"{base_url}/models"
@@ -279,10 +311,20 @@ async def discover_local_models():
                         data = res.json()
                         for m in data.get("data", []):
                             name = m.get("id", "")
+                            tier = compute_resource_tier(0, name)
+                            model_entry = {
+                                "name": name,
+                                "size": 0,
+                                "size_gb": None,
+                                "resource_tier": tier,
+                                "label": f"{name} [{tier}]",
+                                "endpoint": base_url,
+                                "type": "openai"
+                            }
                             if any(v in name.lower() for v in ["vision", "vl", "llava", "moondream"]):
-                                vision_models.append({"name": name, "endpoint": base_url, "type": "openai"})
+                                vision_models.append(model_entry)
                             else:
-                                models.append({"name": name, "endpoint": base_url, "type": "openai"})
+                                models.append(model_entry)
             except Exception as ex:
                 engine_status.append({"name": ep_name, "url": base_url, "status": "offline", "error": str(ex)})
 

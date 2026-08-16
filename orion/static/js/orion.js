@@ -1138,15 +1138,26 @@
         els.memoryCountBadge.textContent = data.database.total_memories;
       }
 
+      function getModelTier(mObj, name) {
+        if (mObj && mObj.resource_tier) return mObj.resource_tier;
+        const n = (name || '').toLowerCase();
+        if (n.includes('30b') || n.includes('32b') || n.includes('70b') || n.includes('72b')) return 'HIGH';
+        if (n.includes('14b') || n.includes('8b') || n.includes('7b') || n.includes('llama3') || n.includes('llava')) return 'MEDIUM';
+        return 'LOW';
+      }
+
       // Populate text models without resetting selection
       if (els.modelSelect && data.models && data.models.length > 0) {
         const currentModel = state.activeModel;
         els.modelSelect.innerHTML = '';
         data.models.forEach(m => {
+          const mName = typeof m === 'string' ? m : m.name;
+          const fullInfo = (data.models_full || []).find(f => f.name === mName);
+          const tier = getModelTier(fullInfo, mName);
           const opt = document.createElement('option');
-          opt.value = m;
-          opt.textContent = m;
-          if (m === currentModel) opt.selected = true;
+          opt.value = mName;
+          opt.textContent = `${mName} [${tier}]`;
+          if (mName === currentModel) opt.selected = true;
           els.modelSelect.appendChild(opt);
         });
         els.modelSelect.value = currentModel;
@@ -1157,10 +1168,13 @@
         const currentVision = state.activeVisionModel;
         els.visionModelSelect.innerHTML = '';
         data.vision_models.forEach(m => {
+          const mName = typeof m === 'string' ? m : m.name;
+          const fullInfo = (data.vision_models_full || []).find(f => f.name === mName);
+          const tier = getModelTier(fullInfo, mName);
           const opt = document.createElement('option');
-          opt.value = m;
-          opt.textContent = m;
-          if (m === currentVision) opt.selected = true;
+          opt.value = mName;
+          opt.textContent = `${mName} [${tier}]`;
+          if (mName === currentVision) opt.selected = true;
           els.visionModelSelect.appendChild(opt);
         });
         els.visionModelSelect.value = currentVision;
