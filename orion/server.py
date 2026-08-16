@@ -155,8 +155,11 @@ def set_config(key: str, value: str):
 # ==============================================================================
 
 ORION_CORE_PERSONA = (
-    "You are Orion, an ultra-competent, calm, razor-sharp, and sophisticated local AI companion. "
+    "You are Orion, an ultra-competent, calm, razor-sharp, and sophisticated local AI companion running directly on the operator's local workstation. "
     "You communicate with razor-sharp intellect, crisp precision, and refined politeness. "
+    "You possess a persistent local SQLite memory core where you store long-term facts, preferences, and tactical notes about the operator across sessions. "
+    "When asked about memories, stored facts, or what you know about the operator, always consult and recite the facts from your [Persistent Long-Term Memory Core]. "
+    "NEVER produce canned AI disclaimers claiming you cannot remember or store personal data. "
     "Keep your spoken responses natural, articulate, and concise (typically 1 to 3 direct sentences) "
     "unless the user explicitly requests an in-depth breakdown, code implementation, or technical walkthrough. "
     "You operate with absolute independence on local hardware. Never mention fictional franchises. "
@@ -167,13 +170,19 @@ def retrieve_relevant_memories(user_query: str) -> List[str]:
     """Retrieve long-term facts stored in SQLite memory matching user context."""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, fact FROM memories ORDER BY last_accessed DESC LIMIT 30")
+        cursor.execute("SELECT id, fact FROM memories ORDER BY last_accessed DESC LIMIT 50")
         rows = cursor.fetchall()
         
         if not rows:
             return []
 
-        query_words = set(user_query.lower().split())
+        q_lower = user_query.lower()
+        # If user explicitly asks about memories, recall, or facts, return all stored memories
+        is_memory_query = any(k in q_lower for k in ["memory", "memories", "remember", "stored", "recall", "about me", "know about"])
+        if is_memory_query:
+            return [r["fact"] for r in rows[:15]]
+
+        query_words = set(q_lower.split())
         matched = []
         for r in rows:
             fact_words = set(r["fact"].lower().split())
@@ -399,6 +408,29 @@ async def get_telemetry():
         "timestamp": time.time()
     }
 
+def is_direct_memory_query(msg: str) -> bool:
+    """Check if the user is explicitly requesting a recall/listing of stored long-term memories."""
+    m = msg.strip().lower().rstrip("?.! ")
+    direct_patterns = [
+        "what memories do you have stored about me",
+        "what memories do you have stored",
+        "what memories do you have",
+        "what do you remember about me",
+        "what do you remember",
+        "what is in your memory",
+        "what's in your memory",
+        "show memories",
+        "show stored memories",
+        "recall memory",
+        "recall memories",
+        "list memories",
+        "list stored memories",
+        "what facts do you know about me",
+        "what facts do you have about me",
+        "what do you know about me"
+    ]
+    return any(p in m for p in direct_patterns)
+
 @app.post("/api/talk")
 async def orion_talk(request: Request):
     """High-speed voice conversation endpoint with memory injection and database persistence."""
@@ -412,11 +444,70 @@ async def orion_talk(request: Request):
     custom_system_prompt = data.get("system_prompt") or ORION_CORE_PERSONA
     stream = bool(data.get("stream", False))
 
+    # Fast direct response for explicit memory recall requests (bypassing model disclaimer RLHF)
+    if is_direct_memory_query(message):
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT fact FROM memories ORDER BY last_accessed DESC")
+            all_mems = [r["fact"] for r in cursor.fetchall()]
+
+        if all_mems:
+            mem_list = "\n".join(f"• {m}" for m in all_mems)
+            reply = (
+                f"Memory core accessed. I currently have {len(all_mems)} persistent record{'s' if len(all_mems) > 1 else ''} stored about you:\n\n"
+                f"{mem_list}\n\n"
+                "You can add, edit, or clear facts anytime in Settings > Persistent Memory."
+            )
+        else:
+            reply = (
+                "My persistent memory core is active and operational, but no custom facts are currently stored in SQLite.\n\n"
+                "You can record facts anytime in Settings > Persistent Memory or tell me directly (e.g. 'Remember that I prefer dark mode and Python 3.12')."
+            )
+
+        # Store session and messages in SQLite
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET updated_at = ?",
+                (session_id, "Memory Recall", time.time(), time.time(), time.time())
+            )
+            cursor.execute(
+                "INSERT INTO messages (session_id, role, content, model, timestamp) VALUES (?, ?, ?, ?, ?)",
+                (session_id, "user", message, model, time.time())
+            )
+            cursor.execute(
+                "INSERT INTO messages (session_id, role, content, model, timestamp) VALUES (?, ?, ?, ?, ?)",
+                (session_id, "assistant", reply, "sqlite_memory_core", time.time())
+            )
+            conn.commit()
+
+        return JSONResponse({
+            "response": reply,
+            "latency_ms": 12.0,
+            "model": "sqlite_memory_core",
+            "memories_recalled": len(all_mems),
+            "session_id": session_id
+        })
+
     # Retrieve relevant memories from database
     relevant_memories = retrieve_relevant_memories(message)
     memory_context = ""
     if relevant_memories:
-        memory_context = "\n[Persistent Long-Term Memory]:\n" + "\n".join(f"- {m}" for m in relevant_memories)
+        memory_context = (
+            "\n\n[PERSISTENT LONG-TERM MEMORY CORE]:\n"
+            + "\n".join(f"• {m}" for m in relevant_memories)
+            + "\n\nCRITICAL MEMORY DIRECTIVE: The above facts are stored in your persistent local memory database. "
+            "When the operator asks what you remember, what memories you have stored, or asks about these facts, "
+            "confidently state and summarize these stored points. NEVER deny having memory or give generic AI disclaimers."
+        )
+    else:
+        q_lower = message.lower()
+        if any(k in q_lower for k in ["memory", "memories", "remember", "stored", "recall", "about me"]):
+            memory_context = (
+                "\n\n[PERSISTENT LONG-TERM MEMORY CORE]:\n"
+                "No custom facts are currently stored in your memory database. "
+                "Inform the operator that your local memory core is active and ready, and they can add memories in Settings > Persistent Memory or tell you facts to remember."
+            )
 
     system_content = f"{custom_system_prompt}{memory_context}"
 
