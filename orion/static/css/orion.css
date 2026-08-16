@@ -109,6 +109,13 @@ body::before {
   flex-wrap: wrap;
 }
 
+.hud-slider-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px;
+}
+
 .hud-right-group {
   display: flex;
   align-items: center;

@@ -750,6 +750,16 @@
       if (els.visionModelSelect && state.activeVisionModel) {
         els.visionModelSelect.value = state.activeVisionModel;
       }
+      if (els.hudMain) {
+        els.hudMain.classList.toggle('left-collapsed', !!state.leftCollapsed);
+        els.hudMain.classList.toggle('right-collapsed', !!state.rightCollapsed);
+      }
+      if (els.toggleLeftWingBtn) {
+        els.toggleLeftWingBtn.textContent = state.leftCollapsed ? 'SENSORS ▸' : '◂ SENSORS';
+      }
+      if (els.toggleRightWingBtn) {
+        els.toggleRightWingBtn.textContent = state.rightCollapsed ? '◂ FEED & CHATS' : 'FEED & CHATS ▸';
+      }
     } catch (e) {
       console.warn('Settings load error:', e);
     }
