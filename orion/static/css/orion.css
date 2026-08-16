@@ -144,7 +144,7 @@ body::before {
 .telemetry-cluster {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
 }
 
 .telemetry-pill {
@@ -211,13 +211,15 @@ body::before {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
-  padding: 6px 12px;
+  padding: 6px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: var(--transition-fast);
@@ -262,22 +264,201 @@ body::before {
 }
 
 /* ==========================================================================
-   MAIN 3-COLUMN LAYOUT
+   MAIN 4-COLUMN LAYOUT
    ========================================================================== */
 
 .hud-main {
   flex: 1;
   display: grid;
-  grid-template-columns: 280px 1fr 340px;
-  gap: 16px;
+  grid-template-columns: 250px 1fr 310px 220px;
+  gap: 12px;
+  min-height: 0;
+  position: relative;
+  transition: grid-template-columns 0.35s cubic-bezier(0.16, 1, 0.3, 1), gap 0.35s ease;
+}
+
+/* Left panels collapsed state */
+.hud-main.left-collapsed {
+  grid-template-columns: 0px 1fr 310px 220px;
+}
+
+.hud-main.left-collapsed .hud-wing-left {
+  opacity: 0;
+  transform: translateX(-40px);
+  pointer-events: none;
+  overflow: hidden;
+  padding: 0;
+  visibility: hidden;
+}
+
+/* Right panels collapsed state (Tactical Feed + Saved Chats) */
+.hud-main.right-collapsed {
+  grid-template-columns: 250px 1fr 0px 0px;
+}
+
+.hud-main.right-collapsed .hud-wing-right,
+.hud-main.right-collapsed .hud-wing-sessions {
+  opacity: 0;
+  transform: translateX(40px);
+  pointer-events: none;
+  overflow: hidden;
+  padding: 0;
+  visibility: hidden;
+}
+
+/* Both sides collapsed (Full Focus Mode) */
+.hud-main.left-collapsed.right-collapsed {
+  grid-template-columns: 0px 1fr 0px 0px;
+}
+
+.hud-wing-left, .hud-wing-right, .hud-wing-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease, visibility 0.35s ease;
+}
+
+/* Collapsed Screen Edge Dock Tabs */
+.hud-edge-tab {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  background: rgba(10, 15, 24, 0.95);
+  border: 1px solid var(--border-active);
+  color: var(--ice-blue);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  padding: 14px 6px;
+  cursor: pointer;
+  display: none;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  transition: var(--transition-fast);
+}
+
+.hud-edge-tab:hover {
+  background: rgba(86, 204, 242, 0.25);
+  box-shadow: 0 0 16px rgba(86, 204, 242, 0.4);
+  color: var(--text-highlight);
+}
+
+.hud-edge-tab.left-tab {
+  left: -8px;
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.hud-edge-tab.right-tab {
+  right: -8px;
+  border-right: none;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.hud-main.left-collapsed .hud-edge-tab.left-tab {
+  display: flex;
+}
+
+.hud-main.right-collapsed .hud-edge-tab.right-tab {
+  display: flex;
+}
+
+.sessions-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 
-.hud-wing-left, .hud-wing-right {
+.sessions-list {
+  flex: 1;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 6px;
+  padding-right: 4px;
   min-height: 0;
+}
+
+.sessions-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sessions-list::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 2px;
+}
+
+.session-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(14, 20, 30, 0.85);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.session-item:hover {
+  border-color: var(--border-active);
+  background: rgba(86, 204, 242, 0.08);
+}
+
+.session-item.active {
+  border-color: var(--ice-blue);
+  background: rgba(86, 204, 242, 0.14);
+  box-shadow: 0 0 10px rgba(86, 204, 242, 0.15);
+}
+
+.session-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.session-item-title {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.session-del-icon {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: var(--transition-fast);
+}
+
+.session-del-icon:hover {
+  color: var(--crimson-alert);
+}
+
+.session-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
 }
 
 .hud-panel {
@@ -986,4 +1167,69 @@ body::before {
   padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+/* Exit Button & Shutdown Overlay */
+.btn-hud.btn-exit {
+  background: rgba(235, 87, 87, 0.12);
+  border-color: rgba(235, 87, 87, 0.4);
+  color: #ff6b6b;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.btn-hud.btn-exit:hover {
+  background: rgba(235, 87, 87, 0.3);
+  border-color: #ff6b6b;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(235, 87, 87, 0.4);
+}
+
+.shutdown-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(5, 7, 12, 0.96);
+  backdrop-filter: blur(24px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.shutdown-overlay.active {
+  display: flex;
+}
+
+.shutdown-modal {
+  background: rgba(14, 20, 30, 0.95);
+  border: 1px solid rgba(235, 87, 87, 0.4);
+  border-radius: var(--radius-md);
+  padding: 40px 48px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 24px rgba(235, 87, 87, 0.2);
+  max-width: 480px;
+}
+
+.shutdown-icon {
+  font-size: 48px;
+  color: #ff6b6b;
+  margin-bottom: 16px;
+}
+
+.shutdown-title {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #ffffff;
+  margin-bottom: 12px;
+}
+
+.shutdown-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
 }

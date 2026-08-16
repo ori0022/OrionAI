@@ -24,9 +24,18 @@
     selectedMicId: 'default',
     availableVoices: [],
     selectedVoice: null,
+    voiceCategory: 'natural',
     voiceRate: 1.05,
     voicePitch: 0.95,
+    voiceVolume: 1.0,
+    selectedMicId: 'default',
+    selectedSpeakerId: 'default',
     isTestingMic: false,
+    isScreenStreaming: false,
+    streamFps: 1.0,
+    currentSessionId: 'default',
+    leftCollapsed: false,
+    rightCollapsed: false,
     latencyMs: 0
   };
 
@@ -56,6 +65,7 @@
     els.camBtn = document.getElementById('camBtn');
     els.shareScreenBtn = document.getElementById('shareScreenBtn');
     els.streamFpsSelect = document.getElementById('streamFpsSelect');
+    els.purgeRamBtn = document.getElementById('purgeRamBtn');
     els.visionPreview = document.getElementById('visionPreview');
     els.visionLiveVideo = document.getElementById('visionLiveVideo');
     els.visionPlaceholder = document.getElementById('visionPlaceholder');
@@ -65,6 +75,24 @@
     
     els.muteToggle = document.getElementById('muteToggle');
     els.speechToggle = document.getElementById('speechToggle');
+    els.exitSystemBtn = document.getElementById('exitSystemBtn');
+    els.shutdownOverlay = document.getElementById('shutdownOverlay');
+
+    // Sliding Wing Panels
+    els.hudMain = document.getElementById('hudMain');
+    els.hudLeftWing = document.getElementById('hudLeftWing');
+    els.hudRightWing = document.getElementById('hudRightWing');
+    els.toggleLeftWingBtn = document.getElementById('toggleLeftWingBtn');
+    els.toggleRightWingBtn = document.getElementById('toggleRightWingBtn');
+    els.collapseLeftBtn = document.getElementById('collapseLeftBtn');
+    els.collapseRightBtn = document.getElementById('collapseRightBtn');
+    els.leftDockTab = document.getElementById('leftDockTab');
+    els.rightDockTab = document.getElementById('rightDockTab');
+
+    // Sessions Wing
+    els.hudSessionsWing = document.getElementById('hudSessionsWing');
+    els.sessionsList = document.getElementById('sessionsList');
+    els.newSessionBtn = document.getElementById('newSessionBtn');
 
     // Hardware I/O Modal
     els.ioConfigBtn = document.getElementById('ioConfigBtn');
@@ -72,12 +100,19 @@
     els.ioCloseBtn = document.getElementById('ioCloseBtn');
     els.saveIoBtn = document.getElementById('saveIoBtn');
     els.micSelect = document.getElementById('micSelect');
+    els.scanMicsBtn = document.getElementById('scanMicsBtn');
     els.micStatusLabel = document.getElementById('micStatusLabel');
     els.toggleMicTestBtn = document.getElementById('toggleMicTestBtn');
     els.micLevelText = document.getElementById('micLevelText');
     els.micMeterFill = document.getElementById('micMeterFill');
+    els.speakerSelect = document.getElementById('speakerSelect');
+    els.testSpeakerBtn = document.getElementById('testSpeakerBtn');
+    els.speakerStatusLabel = document.getElementById('speakerStatusLabel');
+    els.voiceCategorySelect = document.getElementById('voiceCategorySelect');
     els.voiceSelect = document.getElementById('voiceSelect');
     els.voiceCountLabel = document.getElementById('voiceCountLabel');
+    els.voiceVolumeSlider = document.getElementById('voiceVolumeSlider');
+    els.voiceVolumeVal = document.getElementById('voiceVolumeVal');
     els.voiceRateSlider = document.getElementById('voiceRateSlider');
     els.voiceRateVal = document.getElementById('voiceRateVal');
     els.voicePitchSlider = document.getElementById('voicePitchSlider');
@@ -141,8 +176,9 @@
       osc.frequency.setValueAtTime(freqs, now);
     }
 
-    gain.gain.setValueAtTime(0.01, now);
-    gain.gain.linearRampToValueAtTime(0.08, now + 0.02);
+    const peakVol = 0.08 * (state.voiceVolume !== undefined ? state.voiceVolume : 1.0);
+    gain.gain.setValueAtTime(0.005, now);
+    gain.gain.linearRampToValueAtTime(peakVol, now + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
     osc.connect(gain);
@@ -361,9 +397,14 @@
         if (els.voiceCountLabel) {
           els.voiceCountLabel.textContent = `${state.availableVoices.length} voices ready`;
         }
+        
+        loadSettings(); // Restore saved voice & hardware settings
+
         if (!state.selectedVoice && state.availableVoices.length > 0) {
           state.selectedVoice = state.availableVoices.find(v => 
             v.name.includes('Ryan') || 
+            v.name.includes('Natural') ||
+            v.name.includes('Guy') ||
             v.name.includes('Daniel') || 
             v.name.includes('UK English Male') || 
             (v.lang.startsWith('en-GB') && v.name.toLowerCase().includes('male'))
@@ -376,23 +417,74 @@
     }
   }
 
+  function isHumanOrNeuralVoice(v) {
+    const n = (v.name || '').toLowerCase();
+    return n.includes('natural') || 
+           n.includes('neural') || 
+           n.includes('online') || 
+           n.includes('ryan') || 
+           n.includes('guy') || 
+           n.includes('sonia') || 
+           n.includes('george') || 
+           n.includes('daniel') || 
+           n.includes('hazel') || 
+           n.includes('google') || 
+           n.includes('siri') || 
+           n.includes('jenny');
+  }
+
   function populateVoiceSelect() {
-    if (!els.voiceSelect || !state.availableVoices) return;
+    if (!els.voiceSelect || !state.availableVoices || state.availableVoices.length === 0) return;
     els.voiceSelect.innerHTML = '';
-    state.availableVoices.forEach((v, idx) => {
+
+    const cat = state.voiceCategory || 'natural';
+    let filtered = state.availableVoices;
+
+    if (cat === 'natural') {
+      filtered = state.availableVoices.filter(v => isHumanOrNeuralVoice(v) || v.lang.startsWith('en'));
+      if (filtered.length === 0) filtered = state.availableVoices;
+    } else if (cat === 'en-gb') {
+      filtered = state.availableVoices.filter(v => v.lang.toLowerCase().includes('en-gb'));
+      if (filtered.length === 0) filtered = state.availableVoices;
+    } else if (cat === 'en-us') {
+      filtered = state.availableVoices.filter(v => v.lang.toLowerCase().includes('en-us'));
+      if (filtered.length === 0) filtered = state.availableVoices;
+    }
+
+    filtered.forEach((v) => {
       const opt = document.createElement('option');
-      opt.value = idx;
-      opt.textContent = `${v.name} (${v.lang})${v.default ? ' [Default]' : ''}`;
+      opt.value = v.name;
+      const isNeural = isHumanOrNeuralVoice(v);
+      opt.textContent = `${isNeural ? '✨ ' : ''}${v.name} (${v.lang})${v.default ? ' [Default]' : ''}`;
       if (state.selectedVoice && v.name === state.selectedVoice.name) {
         opt.selected = true;
       }
       els.voiceSelect.appendChild(opt);
     });
+
+    if (els.voiceSelect.selectedIndex === -1 && els.voiceSelect.children.length > 0) {
+      els.voiceSelect.selectedIndex = 0;
+      const firstVoiceName = els.voiceSelect.value;
+      state.selectedVoice = state.availableVoices.find(v => v.name === firstVoiceName);
+    }
   }
 
-  async function populateMicSelect() {
+  async function populateMicSelect(requestPermission = false) {
     if (!els.micSelect || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
     try {
+      if (requestPermission) {
+        if (els.micStatusLabel) {
+          els.micStatusLabel.textContent = 'Scanning...';
+          els.micStatusLabel.style.color = 'var(--ice-blue)';
+        }
+        try {
+          const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          tempStream.getTracks().forEach(t => t.stop());
+        } catch (permErr) {
+          console.warn('Microphone permission notice:', permErr);
+        }
+      }
+
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter(d => d.kind === 'audioinput');
       
@@ -402,21 +494,211 @@
       defaultOpt.textContent = 'Default System Microphone';
       els.micSelect.appendChild(defaultOpt);
 
-      audioInputs.forEach(d => {
+      audioInputs.forEach((d, idx) => {
         if (d.deviceId !== 'default') {
           const opt = document.createElement('option');
           opt.value = d.deviceId;
-          opt.textContent = d.label || `Microphone ${els.micSelect.children.length}`;
+          opt.textContent = d.label || `Microphone ${idx + 1} (${d.deviceId.substring(0, 8)}...)`;
           if (d.deviceId === state.selectedMicId) opt.selected = true;
           els.micSelect.appendChild(opt);
         }
       });
+
       if (els.micStatusLabel) {
         els.micStatusLabel.textContent = `${audioInputs.length} device(s) online`;
+        els.micStatusLabel.style.color = 'var(--emerald-nominal)';
       }
+
+      await populateSpeakerSelect();
     } catch (e) {
       console.warn('Microphone enumeration notice:', e);
     }
+  }
+
+  async function populateSpeakerSelect() {
+    if (!els.speakerSelect || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+
+      els.speakerSelect.innerHTML = '';
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = 'default';
+      defaultOpt.textContent = 'Default System Output (Speakers/Headset)';
+      els.speakerSelect.appendChild(defaultOpt);
+
+      audioOutputs.forEach((d, idx) => {
+        if (d.deviceId !== 'default') {
+          const opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || `Speaker / Headset ${idx + 1} (${d.deviceId.substring(0, 8)}...)`;
+          if (d.deviceId === state.selectedSpeakerId) opt.selected = true;
+          els.speakerSelect.appendChild(opt);
+        }
+      });
+
+      if (els.speakerStatusLabel) {
+        els.speakerStatusLabel.textContent = `${audioOutputs.length > 0 ? audioOutputs.length : 1} device(s) ready`;
+        els.speakerStatusLabel.style.color = 'var(--emerald-nominal)';
+      }
+
+      if (state.selectedSpeakerId) {
+        els.speakerSelect.value = state.selectedSpeakerId;
+        applyAudioSink(state.selectedSpeakerId);
+      }
+    } catch (e) {
+      console.warn('Speaker enumeration notice:', e);
+    }
+  }
+
+  function applyAudioSink(sinkId) {
+    if (state.audioCtx && typeof state.audioCtx.setSinkId === 'function') {
+      try {
+        state.audioCtx.setSinkId(sinkId || 'default');
+      } catch (e) {
+        console.warn('AudioContext setSinkId notice:', e);
+      }
+    }
+  }
+
+  function testSpeakerOutput() {
+    initAudioContext();
+    applyAudioSink(state.selectedSpeakerId);
+    playTone([523.25, 659.25, 783.99], 0.22, 'sine');
+    if (els.speakerStatusLabel) {
+      els.speakerStatusLabel.textContent = 'Playing Chime...';
+      setTimeout(() => {
+        els.speakerStatusLabel.textContent = 'Ready';
+      }, 1500);
+    }
+  }
+
+  function saveSettings() {
+    const settings = {
+      activeModel: state.activeModel,
+      activeVisionModel: state.activeVisionModel,
+      micId: state.selectedMicId,
+      speakerId: state.selectedSpeakerId,
+      voiceName: state.selectedVoice ? state.selectedVoice.name : '',
+      voiceCategory: state.voiceCategory,
+      voiceRate: state.voiceRate,
+      voicePitch: state.voicePitch,
+      voiceVolume: state.voiceVolume,
+      autoSpeak: state.autoSpeak,
+      audioMuted: state.audioMuted,
+      streamFps: state.streamFps,
+      leftCollapsed: state.leftCollapsed,
+      rightCollapsed: state.rightCollapsed
+    };
+    try {
+      localStorage.setItem('orion_config_v2', JSON.stringify(settings));
+    } catch (e) {
+      console.warn('Settings save error:', e);
+    }
+  }
+
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem('orion_config_v2');
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s.activeModel) {
+        state.activeModel = s.activeModel;
+        if (els.modelSelect) els.modelSelect.value = s.activeModel;
+      }
+      if (s.activeVisionModel) {
+        state.activeVisionModel = s.activeVisionModel;
+        if (els.visionModelSelect) els.visionModelSelect.value = s.activeVisionModel;
+      }
+      if (s.micId) state.selectedMicId = s.micId;
+      if (s.speakerId) {
+        state.selectedSpeakerId = s.speakerId;
+        applyAudioSink(s.speakerId);
+      }
+      if (s.voiceCategory) state.voiceCategory = s.voiceCategory;
+      if (s.voiceRate !== undefined) state.voiceRate = parseFloat(s.voiceRate);
+      if (s.voicePitch !== undefined) state.voicePitch = parseFloat(s.voicePitch);
+      if (s.voiceVolume !== undefined) state.voiceVolume = parseFloat(s.voiceVolume);
+      if (s.autoSpeak !== undefined) state.autoSpeak = Boolean(s.autoSpeak);
+      if (s.audioMuted !== undefined) state.audioMuted = Boolean(s.audioMuted);
+      if (s.streamFps !== undefined) state.streamFps = parseFloat(s.streamFps);
+      if (s.leftCollapsed !== undefined) {
+        state.leftCollapsed = Boolean(s.leftCollapsed);
+        if (els.hudMain) els.hudMain.classList.toggle('left-collapsed', state.leftCollapsed);
+        if (els.toggleLeftWingBtn) els.toggleLeftWingBtn.textContent = state.leftCollapsed ? 'SENSORS ▸' : '◂ SENSORS';
+      }
+      if (s.rightCollapsed !== undefined) {
+        state.rightCollapsed = Boolean(s.rightCollapsed);
+        if (els.hudMain) els.hudMain.classList.toggle('right-collapsed', state.rightCollapsed);
+        if (els.toggleRightWingBtn) els.toggleRightWingBtn.textContent = state.rightCollapsed ? '◂ FEED & CHATS' : 'FEED & CHATS ▸';
+      }
+
+      if (s.voiceName && state.availableVoices && state.availableVoices.length > 0) {
+        const found = state.availableVoices.find(v => v.name === s.voiceName);
+        if (found) state.selectedVoice = found;
+      }
+
+      if (els.voiceRateSlider && els.voiceRateVal) {
+        els.voiceRateSlider.value = state.voiceRate;
+        els.voiceRateVal.textContent = `${state.voiceRate.toFixed(2)}x`;
+      }
+      if (els.voicePitchSlider && els.voicePitchVal) {
+        els.voicePitchSlider.value = state.voicePitch;
+        els.voicePitchVal.textContent = `${state.voicePitch.toFixed(2)}x`;
+      }
+      if (els.voiceVolumeSlider && els.voiceVolumeVal) {
+        els.voiceVolumeSlider.value = Math.round(state.voiceVolume * 100);
+        els.voiceVolumeVal.textContent = `${Math.round(state.voiceVolume * 100)}%`;
+      }
+      if (els.voiceCategorySelect) {
+        els.voiceCategorySelect.value = state.voiceCategory;
+      }
+      if (els.speechToggle) {
+        els.speechToggle.textContent = state.autoSpeak ? 'VOICE: ON' : 'VOICE: OFF';
+      }
+      if (els.muteToggle) {
+        els.muteToggle.textContent = state.audioMuted ? 'SFX: OFF' : 'SFX: ON';
+      }
+      if (els.streamFpsSelect) {
+        els.streamFpsSelect.value = state.streamFps.toString();
+      }
+      if (els.modelSelect && state.activeModel) {
+        els.modelSelect.value = state.activeModel;
+      }
+      if (els.visionModelSelect && state.activeVisionModel) {
+        els.visionModelSelect.value = state.activeVisionModel;
+      }
+    } catch (e) {
+      console.warn('Settings load error:', e);
+    }
+  }
+
+  function toggleLeftWing(force) {
+    state.leftCollapsed = force !== undefined ? force : !state.leftCollapsed;
+    if (els.hudMain) {
+      els.hudMain.classList.toggle('left-collapsed', state.leftCollapsed);
+    }
+    if (els.toggleLeftWingBtn) {
+      els.toggleLeftWingBtn.textContent = state.leftCollapsed ? 'SENSORS ▸' : '◂ SENSORS';
+    }
+    saveSettings();
+    initAudioContext();
+    sfx.click();
+    setTimeout(() => resizeCanvas(), 360);
+  }
+
+  function toggleRightWing(force) {
+    state.rightCollapsed = force !== undefined ? force : !state.rightCollapsed;
+    if (els.hudMain) {
+      els.hudMain.classList.toggle('right-collapsed', state.rightCollapsed);
+    }
+    if (els.toggleRightWingBtn) {
+      els.toggleRightWingBtn.textContent = state.rightCollapsed ? '◂ FEED & CHATS' : 'FEED & CHATS ▸';
+    }
+    saveSettings();
+    initAudioContext();
+    sfx.click();
+    setTimeout(() => resizeCanvas(), 360);
   }
 
   function toggleListening() {
@@ -468,6 +750,7 @@
     if (state.selectedVoice) utterance.voice = state.selectedVoice;
     utterance.rate = state.voiceRate;
     utterance.pitch = state.voicePitch;
+    utterance.volume = Math.min(1.0, Math.max(0.0, state.voiceVolume));
 
     utterance.onstart = () => {
       setInteractionState('speaking');
@@ -837,8 +1120,14 @@
       const data = await res.json();
 
       state.connected = data.status === 'nominal';
-      state.activeModel = data.default_model || state.activeModel;
-      state.activeVisionModel = data.default_vision_model || state.activeVisionModel;
+
+      if (!state.activeModel || (data.models && !data.models.includes(state.activeModel))) {
+        state.activeModel = data.default_model || (data.models && data.models[0]) || 'llama3:latest';
+      }
+
+      if (!state.activeVisionModel || (data.vision_models && !data.vision_models.includes(state.activeVisionModel))) {
+        state.activeVisionModel = data.default_vision_model || (data.vision_models && data.vision_models[0]) || 'llava:latest';
+      }
 
       if (els.statusDot && els.statusText) {
         els.statusDot.className = 'status-dot ' + (state.connected ? 'nominal' : 'degraded');
@@ -849,28 +1138,32 @@
         els.memoryCountBadge.textContent = data.database.total_memories;
       }
 
-      // Populate text models
+      // Populate text models without resetting selection
       if (els.modelSelect && data.models && data.models.length > 0) {
+        const currentModel = state.activeModel;
         els.modelSelect.innerHTML = '';
         data.models.forEach(m => {
           const opt = document.createElement('option');
           opt.value = m;
           opt.textContent = m;
-          if (m === state.activeModel) opt.selected = true;
+          if (m === currentModel) opt.selected = true;
           els.modelSelect.appendChild(opt);
         });
+        els.modelSelect.value = currentModel;
       }
 
-      // Populate vision models
+      // Populate vision models without resetting selection
       if (els.visionModelSelect && data.vision_models && data.vision_models.length > 0) {
+        const currentVision = state.activeVisionModel;
         els.visionModelSelect.innerHTML = '';
         data.vision_models.forEach(m => {
           const opt = document.createElement('option');
           opt.value = m;
           opt.textContent = m;
-          if (m === state.activeVisionModel) opt.selected = true;
+          if (m === currentVision) opt.selected = true;
           els.visionModelSelect.appendChild(opt);
         });
+        els.visionModelSelect.value = currentVision;
       }
     } catch (e) {
       console.warn('Telemetry load failed:', e);
@@ -900,7 +1193,7 @@
       const payload = {
         message: text,
         model: state.isScreenStreaming ? (state.activeVisionModel || state.activeModel) : state.activeModel,
-        session_id: 'default',
+        session_id: state.currentSessionId || 'default',
         stream: false
       };
 
@@ -918,14 +1211,22 @@
       state.latencyMs = Math.round(performance.now() - t0);
       updateLatencyDisplay();
 
-      if (res.ok && data.response) {
+      if (res.ok && typeof data.response === 'string' && data.response.trim().length > 0) {
         sfx.ready();
         state.history.push({ role: 'assistant', content: data.response });
         appendTranscript('assistant', data.response);
         speakResponse(data.response);
         loadTelemetry(); // refresh memory count
+        loadSessions();  // refresh saved chats titles & timestamps
+      } else if (res.ok) {
+        const fallbackText = "Protocol received. System operational.";
+        sfx.ready();
+        state.history.push({ role: 'assistant', content: fallbackText });
+        appendTranscript('assistant', fallbackText);
+        speakResponse(fallbackText);
+        loadSessions();
       } else {
-        appendTranscript('assistant', `Communication error: ${data.detail || data.error || 'Unknown'}`);
+        appendTranscript('assistant', `Communication error: ${data.detail || data.error || 'Inference engine error'}`);
         setInteractionState('idle');
       }
     } catch (e) {
@@ -970,16 +1271,23 @@
     }
   }
 
-  async function loadHistory() {
+  async function loadHistory(sessionId = null) {
+    const targetSession = sessionId || state.currentSessionId || 'default';
     try {
-      const res = await fetch('/api/history');
+      const res = await fetch(`/api/history?session_id=${encodeURIComponent(targetSession)}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (data.messages && data.messages.length > 0) {
-        if (els.transcriptFeed) els.transcriptFeed.innerHTML = '';
-        data.messages.forEach(m => {
-          appendTranscript(m.role, m.content);
-        });
+      if (els.transcriptFeed) {
+        els.transcriptFeed.innerHTML = '';
+        state.history = [];
+        if (data.messages && data.messages.length > 0) {
+          data.messages.forEach(m => {
+            appendTranscript(m.role, m.content);
+            state.history.push({ role: m.role, content: m.content });
+          });
+        } else {
+          appendTranscript('assistant', 'Orion standalone core online. Ready for tactical instructions.');
+        }
       }
     } catch (e) {
       console.warn('History load notice:', e);
@@ -991,17 +1299,123 @@
       await fetch('/api/history/clear', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: 'default' })
+        body: JSON.stringify({ session_id: state.currentSessionId || 'default' })
       });
       if (els.transcriptFeed) els.transcriptFeed.innerHTML = '';
       appendTranscript('assistant', 'Tactical log cleared. Orion online and ready.');
+      loadSessions();
     } catch (e) {
       console.warn('Clear history failed', e);
     }
   }
 
   // ==========================================================================
-  // 7. MEMORY MANAGER CONTROLLERS
+  // 7. SESSIONS & CONVERSATION LOG CONTROLLER
+  // ==========================================================================
+
+  async function loadSessions() {
+    if (!els.sessionsList) return;
+    try {
+      const res = await fetch('/api/sessions');
+      if (!res.ok) return;
+      const data = await res.json();
+      els.sessionsList.innerHTML = '';
+
+      if (!data.sessions || data.sessions.length === 0) {
+        els.sessionsList.innerHTML = '<div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 16px 4px;">No saved conversations yet.</div>';
+        return;
+      }
+
+      data.sessions.forEach(s => {
+        const item = document.createElement('div');
+        item.className = 'session-item ' + (s.id === state.currentSessionId ? 'active' : '');
+        item.dataset.id = s.id;
+
+        const header = document.createElement('div');
+        header.className = 'session-item-header';
+
+        const title = document.createElement('div');
+        title.className = 'session-item-title';
+        title.textContent = s.title || 'Conversation';
+        title.title = s.title || 'Conversation';
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'session-del-icon';
+        delBtn.innerHTML = '&times;';
+        delBtn.title = 'Delete Session';
+        delBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteSessionItem(s.id);
+        });
+
+        header.appendChild(title);
+        header.appendChild(delBtn);
+
+        const meta = document.createElement('div');
+        meta.className = 'session-item-meta';
+        const dateStr = new Date(s.updated_at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        meta.innerHTML = `<span>${s.message_count || 0} msgs</span><span>${dateStr}</span>`;
+
+        item.appendChild(header);
+        item.appendChild(meta);
+
+        item.addEventListener('click', () => {
+          switchSession(s.id);
+        });
+
+        els.sessionsList.appendChild(item);
+      });
+    } catch (e) {
+      console.warn('Error loading sessions:', e);
+    }
+  }
+
+  async function switchSession(sessionId) {
+    if (state.currentSessionId === sessionId) return;
+    state.currentSessionId = sessionId;
+    sfx.click();
+    await loadHistory(sessionId);
+    await loadSessions();
+  }
+
+  async function createNewSession() {
+    initAudioContext();
+    sfx.activate();
+    const newId = `session_${Date.now()}`;
+    try {
+      await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: newId, title: 'New Conversation' })
+      });
+      state.currentSessionId = newId;
+      if (els.transcriptFeed) {
+        els.transcriptFeed.innerHTML = '';
+        appendTranscript('assistant', 'New session initialized. Orion stands ready for instructions.');
+      }
+      state.history = [];
+      await loadSessions();
+    } catch (e) {
+      console.warn('Failed to create session:', e);
+    }
+  }
+
+  async function deleteSessionItem(sessionId) {
+    sfx.click();
+    try {
+      await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+      if (state.currentSessionId === sessionId) {
+        state.currentSessionId = 'default';
+        await loadHistory('default');
+      }
+      await loadSessions();
+    } catch (e) {
+      console.warn('Failed to delete session:', e);
+    }
+  }
+
+  // ==========================================================================
+  // 8. MEMORY MANAGER CONTROLLERS
   // ==========================================================================
 
   async function loadMemories() {
@@ -1061,7 +1475,7 @@
   }
 
   // ==========================================================================
-  // 8. AI ENGINES & ENDPOINTS CONTROLLER
+  // 9. AI ENGINES & ENDPOINTS CONTROLLER
   // ==========================================================================
 
   async function loadEndpoints() {
@@ -1110,13 +1524,14 @@
   }
 
   // ==========================================================================
-  // 9. EVENT LISTENERS & BOOTSTRAP
+  // 10. EVENT LISTENERS & BOOTSTRAP
   // ==========================================================================
 
   function bindEvents() {
     if (els.interactionCore) els.interactionCore.addEventListener('click', toggleListening);
     if (els.sendBtn) els.sendBtn.addEventListener('click', () => sendUserMessage());
     if (els.clearChatBtn) els.clearChatBtn.addEventListener('click', clearHistory);
+    if (els.newSessionBtn) els.newSessionBtn.addEventListener('click', createNewSession);
 
     if (els.chatInput) {
       els.chatInput.addEventListener('keydown', (e) => {
@@ -1127,26 +1542,105 @@
     if (els.snapBtn) els.snapBtn.addEventListener('click', captureScreen);
     if (els.camBtn) els.camBtn.addEventListener('click', captureWebcam);
     if (els.shareScreenBtn) els.shareScreenBtn.addEventListener('click', toggleScreenStream);
-    if (els.streamFpsSelect) els.streamFpsSelect.addEventListener('change', updateStreamFps);
+    if (els.purgeRamBtn) {
+      els.purgeRamBtn.addEventListener('click', async () => {
+        initAudioContext();
+        sfx.snap();
+        els.purgeRamBtn.textContent = 'Freeing...';
+        try {
+          const res = await fetch('/api/models/purge', { method: 'POST' });
+          const data = await res.json();
+          els.purgeRamBtn.textContent = 'Freed!';
+          sfx.ready();
+          appendTranscript('assistant', `Memory purged. Inactive models unloaded: ${data.unloaded_models.join(', ') || 'All memory freed'}.`);
+          setTimeout(() => {
+            els.purgeRamBtn.textContent = 'Free RAM';
+          }, 2000);
+        } catch (e) {
+          els.purgeRamBtn.textContent = 'Free RAM';
+        }
+      });
+    }
+    if (els.streamFpsSelect) {
+      els.streamFpsSelect.addEventListener('change', () => {
+        updateStreamFps();
+        saveSettings();
+      });
+    }
 
     if (els.modelSelect) {
-      els.modelSelect.addEventListener('change', (e) => {
-        state.activeModel = e.target.value;
+      els.modelSelect.addEventListener('change', async (e) => {
+        const newModel = e.target.value;
+        const oldModel = state.activeModel;
+        state.activeModel = newModel;
+        saveSettings();
         sfx.click();
+        try {
+          await fetch('/api/models/switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_model: newModel, old_model: oldModel })
+          });
+        } catch (err) {
+          console.warn('Model switch notice:', err);
+        }
       });
     }
 
     if (els.visionModelSelect) {
-      els.visionModelSelect.addEventListener('change', (e) => {
-        state.activeVisionModel = e.target.value;
+      els.visionModelSelect.addEventListener('change', async (e) => {
+        const newVision = e.target.value;
+        const oldVision = state.activeVisionModel;
+        state.activeVisionModel = newVision;
+        saveSettings();
         sfx.click();
+        try {
+          await fetch('/api/models/switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_model: newVision, old_model: oldVision })
+          });
+        } catch (err) {
+          console.warn('Vision switch notice:', err);
+        }
       });
     }
+
+    if (els.exitSystemBtn) {
+      els.exitSystemBtn.addEventListener('click', async () => {
+        const confirmed = confirm("Completely shutdown Orion AI Core and terminate all llama-server background processes?");
+        if (!confirmed) return;
+
+        initAudioContext();
+        sfx.snap();
+        if (els.shutdownOverlay) els.shutdownOverlay.classList.add('active');
+
+        try {
+          await fetch('/api/shutdown', { method: 'POST' });
+        } catch (e) {
+          // Server closed
+        }
+
+        setTimeout(() => {
+          try { window.close(); } catch (e) {}
+        }, 1200);
+      });
+    }
+
+    // Wing Slide Controls
+    if (els.toggleLeftWingBtn) els.toggleLeftWingBtn.addEventListener('click', () => toggleLeftWing());
+    if (els.collapseLeftBtn) els.collapseLeftBtn.addEventListener('click', () => toggleLeftWing(true));
+    if (els.leftDockTab) els.leftDockTab.addEventListener('click', () => toggleLeftWing(false));
+
+    if (els.toggleRightWingBtn) els.toggleRightWingBtn.addEventListener('click', () => toggleRightWing());
+    if (els.collapseRightBtn) els.collapseRightBtn.addEventListener('click', () => toggleRightWing(true));
+    if (els.rightDockTab) els.rightDockTab.addEventListener('click', () => toggleRightWing(false));
 
     if (els.muteToggle) {
       els.muteToggle.addEventListener('click', () => {
         state.audioMuted = !state.audioMuted;
         els.muteToggle.textContent = state.audioMuted ? 'SFX: OFF' : 'SFX: ON';
+        saveSettings();
         if (!state.audioMuted) sfx.activate();
       });
     }
@@ -1155,24 +1649,34 @@
       els.speechToggle.addEventListener('click', () => {
         state.autoSpeak = !state.autoSpeak;
         els.speechToggle.textContent = state.autoSpeak ? 'VOICE: ON' : 'VOICE: OFF';
+        saveSettings();
         if (state.autoSpeak) sfx.click();
       });
     }
 
     // Hardware I/O Modal Handlers
     if (els.ioConfigBtn) {
-      els.ioConfigBtn.addEventListener('click', () => {
+      els.ioConfigBtn.addEventListener('click', async () => {
         initAudioContext();
-        populateMicSelect();
+        await populateMicSelect(false);
         populateVoiceSelect();
         els.ioModalBackdrop.classList.add('open');
         sfx.click();
       });
     }
 
+    if (els.scanMicsBtn) {
+      els.scanMicsBtn.addEventListener('click', async () => {
+        initAudioContext();
+        await populateMicSelect(true);
+        sfx.activate();
+      });
+    }
+
     if (els.ioCloseBtn) {
       els.ioCloseBtn.addEventListener('click', () => {
         stopMicTest();
+        saveSettings();
         els.ioModalBackdrop.classList.remove('open');
       });
     }
@@ -1180,7 +1684,9 @@
     if (els.saveIoBtn) {
       els.saveIoBtn.addEventListener('click', () => {
         stopMicTest();
+        saveSettings();
         els.ioModalBackdrop.classList.remove('open');
+        sfx.click();
       });
     }
 
@@ -1189,18 +1695,51 @@
     if (els.micSelect) {
       els.micSelect.addEventListener('change', async (e) => {
         state.selectedMicId = e.target.value;
+        saveSettings();
         sfx.click();
         if (state.isTestingMic) await startMicTest();
       });
     }
 
+    if (els.speakerSelect) {
+      els.speakerSelect.addEventListener('change', (e) => {
+        state.selectedSpeakerId = e.target.value;
+        applyAudioSink(state.selectedSpeakerId);
+        saveSettings();
+        sfx.click();
+      });
+    }
+
+    if (els.testSpeakerBtn) {
+      els.testSpeakerBtn.addEventListener('click', testSpeakerOutput);
+    }
+
+    if (els.voiceCategorySelect) {
+      els.voiceCategorySelect.addEventListener('change', (e) => {
+        state.voiceCategory = e.target.value;
+        populateVoiceSelect();
+        saveSettings();
+        sfx.click();
+      });
+    }
+
     if (els.voiceSelect) {
       els.voiceSelect.addEventListener('change', (e) => {
-        const idx = parseInt(e.target.value, 10);
-        if (state.availableVoices[idx]) {
-          state.selectedVoice = state.availableVoices[idx];
+        const vName = e.target.value;
+        const voice = state.availableVoices.find(v => v.name === vName);
+        if (voice) {
+          state.selectedVoice = voice;
+          saveSettings();
           sfx.click();
         }
+      });
+    }
+
+    if (els.voiceVolumeSlider && els.voiceVolumeVal) {
+      els.voiceVolumeSlider.addEventListener('input', (e) => {
+        state.voiceVolume = parseInt(e.target.value, 10) / 100;
+        els.voiceVolumeVal.textContent = `${e.target.value}%`;
+        saveSettings();
       });
     }
 
@@ -1208,6 +1747,7 @@
       els.voiceRateSlider.addEventListener('input', (e) => {
         state.voiceRate = parseFloat(e.target.value);
         els.voiceRateVal.textContent = `${state.voiceRate.toFixed(2)}x`;
+        saveSettings();
       });
     }
 
@@ -1215,6 +1755,7 @@
       els.voicePitchSlider.addEventListener('input', (e) => {
         state.voicePitch = parseFloat(e.target.value);
         els.voicePitchVal.textContent = `${state.voicePitch.toFixed(2)}x`;
+        saveSettings();
       });
     }
 
@@ -1222,6 +1763,13 @@
       els.testVoiceBtn.addEventListener('click', () => {
         speakResponse('Orion vocal transmission test. Frequency nominal, speech synthesis operational.');
       });
+    }
+
+    // Auto-refresh microphones on hardware change
+    if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
+      navigator.mediaDevices.ondevicechange = () => {
+        populateMicSelect(false);
+      };
     }
 
     // Memory Modal Handlers
@@ -1313,18 +1861,19 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     initElements();
+    loadSettings();
     initCanvas();
     initSpeechEngine();
     bindEvents();
     loadTelemetry();
-    loadHistory();
+    loadSessions();
     populateMicSelect();
 
-    setTimeout(() => {
-      if (els.transcriptFeed && els.transcriptFeed.children.length === 0) {
-        appendTranscript('assistant', 'Orion standalone core online. SQLite persistent memory loaded. Ready for commands.');
-      }
-    }, 500);
+    // Start with a clean, fresh conversation session on startup
+    state.currentSessionId = 'session_' + Date.now();
+    state.history = [];
+    if (els.transcriptFeed) els.transcriptFeed.innerHTML = '';
+    appendTranscript('assistant', 'Orion standalone core online. Ready for tactical instructions.');
   });
 
 })();

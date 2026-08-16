@@ -56,11 +56,24 @@ def test_orion():
         print(f"    Vision Analysis: {vis_res.json().get('response')}")
         assert vis_res.status_code == 200
 
-        # 5. Standalone HUD UI page
-        print("\n[5] Testing GET / (Orion Standalone HUD UI)...")
+        # 5. Session Management Tests
+        print("\n[5] Testing Session Management (/api/sessions)...")
+        sess_create = client.post(f"{BASE_URL}/api/sessions", json={"title": "Test Session Alpha", "session_id": "test_alpha"})
+        print(f"    Create Session: {sess_create.status_code}")
+        assert sess_create.status_code == 200
+
+        sess_list = client.get(f"{BASE_URL}/api/sessions")
+        print(f"    List Sessions: {sess_list.status_code}, Found: {len(sess_list.json().get('sessions', []))} sessions")
+        assert sess_list.status_code == 200
+
+        # 6. Standalone HUD UI page
+        print("\n[6] Testing GET / (Orion Standalone HUD UI)...")
         ui_res = client.get(f"{BASE_URL}/")
         print(f"    UI Status: {ui_res.status_code}")
         assert "Orion Core" in ui_res.text
+        assert "Saved Chats" in ui_res.text
+        assert "voiceVolumeSlider" in ui_res.text
+        assert "scanMicsBtn" in ui_res.text
         assert ui_res.status_code == 200
 
         print("\n>>> ALL ORION STANDALONE TESTS PASSED NOMINALLY! <<<")

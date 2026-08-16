@@ -46,17 +46,24 @@
           </select>
         </div>
 
-        <!-- Utility Navigation Buttons -->
+        <!-- Wing Slide Controls & Utility Buttons -->
+        <button class="btn-hud" id="toggleLeftWingBtn" title="Slide Diagnostics, Sensors & Protocols">◂ SENSORS</button>
+        <button class="btn-hud" id="toggleRightWingBtn" title="Slide Feed & Saved Chats">FEED & CHATS ▸</button>
         <button class="btn-hud" id="memoryModalBtn" aria-label="Open Memory Manager">MEMORY (<span id="memoryCountBadge">0</span>)</button>
         <button class="btn-hud" id="endpointModalBtn" aria-label="Configure Local AI Endpoints">AI ENGINES</button>
         <button class="btn-hud" id="ioConfigBtn" aria-label="Configure Audio Input and Output Devices">I/O CONFIG</button>
         <button class="btn-hud" id="speechToggle" aria-label="Toggle Voice Readout">VOICE: ON</button>
         <button class="btn-hud" id="muteToggle" aria-label="Toggle SFX">SFX: ON</button>
+        <button class="btn-hud btn-exit" id="exitSystemBtn" title="Completely shutdown Orion and kill all llama-server processes">EXIT ⏻</button>
       </div>
     </header>
 
     <!-- Main Viewport Layout -->
     <main class="hud-main" id="hudMain">
+
+      <!-- Collapsed Edge Dock Tabs -->
+      <button class="hud-edge-tab left-tab" id="leftDockTab" title="Slide in Diagnostics, Optical Sensors & Protocols">▸ SENSORS & DIAGNOSTICS</button>
+      <button class="hud-edge-tab right-tab" id="rightDockTab" title="Slide in Tactical Feed & Saved Chats">◂ FEED & SAVED CHATS</button>
       
       <!-- Left Wing: Vitals & Optical Sensors -->
       <aside class="hud-wing-left" id="hudLeftWing">
@@ -65,7 +72,10 @@
         <section class="hud-panel" id="telemetryPanel">
           <div class="panel-header">
             <span class="panel-title">System Diagnostics</span>
-            <span class="brand-subtitle" id="systemUptime">00:00:00</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="brand-subtitle" id="systemUptime">00:00:00</span>
+              <button class="btn-hud-tiny" id="collapseLeftBtn" title="Slide Left Panels Offscreen">◂ Slide</button>
+            </div>
           </div>
           <div class="telemetry-row">
             <span>Primary AI Engine</span>
@@ -132,6 +142,7 @@
         <section class="hud-panel" id="protocolsPanel">
           <div class="panel-header">
             <span class="panel-title">Tactical Protocols</span>
+            <button class="btn-hud-tiny" id="purgeRamBtn" title="Unload models and instantly free system RAM">Free RAM</button>
           </div>
           <div class="chips-grid">
             <button class="chip-btn" data-cmd="Run full subsystem diagnostics and report status.">Diagnostics</button>
@@ -176,8 +187,9 @@
         <section class="hud-panel transcript-panel" id="transcriptPanel">
           <div class="panel-header">
             <span class="panel-title">Tactical Feed</span>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 6px;">
               <button class="btn-hud-tiny" id="clearChatBtn" title="Clear Conversation Log">Clear</button>
+              <button class="btn-hud-tiny" id="collapseRightBtn" title="Slide Right Panels Offscreen">Slide ▸</button>
             </div>
           </div>
           
@@ -201,6 +213,19 @@
 
       </aside>
 
+      <!-- Far Right Wing: Saved Conversation History -->
+      <aside class="hud-wing-sessions" id="hudSessionsWing">
+        <section class="hud-panel sessions-panel" id="sessionsPanel">
+          <div class="panel-header">
+            <span class="panel-title">Saved Chats</span>
+            <button class="btn-hud-tiny primary" id="newSessionBtn" title="Start a fresh conversation">+ New Chat</button>
+          </div>
+          <div class="sessions-list" id="sessionsList">
+            <!-- Dynamic session items inserted dynamically -->
+          </div>
+        </section>
+      </aside>
+
     </main>
 
   </div>
@@ -218,17 +243,18 @@
           <span>Audio Input (Microphone)</span>
           <span id="micStatusLabel" style="color: var(--emerald-nominal);">Ready</span>
         </label>
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; gap: 6px;">
           <select id="micSelect" class="io-select" aria-label="Microphone input device" style="flex: 1;">
             <option value="default">Default System Microphone</option>
           </select>
+          <button class="btn-hud" id="scanMicsBtn" title="Scan and unlock all available microphones">Scan Mics</button>
           <button class="btn-hud" id="toggleMicTestBtn" style="white-space: nowrap;">Test Mic</button>
         </div>
 
         <!-- Live Volume Level VU Meter -->
         <div class="mic-meter-container" id="micMeterContainer">
           <div class="mic-meter-header">
-            <span class="meter-label">Live Input Volume</span>
+            <span class="meter-label">Live Input Sensitivity</span>
             <span class="meter-val" id="micLevelText">0%</span>
           </div>
           <div class="mic-meter-track">
@@ -237,14 +263,46 @@
         </div>
       </div>
 
+      <!-- Audio Output (Speakers / Headset) -->
+      <div class="io-form-group">
+        <label for="speakerSelect" class="io-label">
+          <span>Audio Output (Speakers / Headset)</span>
+          <span id="speakerStatusLabel" style="color: var(--emerald-nominal);">Ready</span>
+        </label>
+        <div style="display: flex; gap: 6px;">
+          <select id="speakerSelect" class="io-select" aria-label="Audio output speaker device" style="flex: 1;">
+            <option value="default">Default System Output</option>
+          </select>
+          <button class="btn-hud" id="testSpeakerBtn" style="white-space: nowrap;">Test Speaker</button>
+        </div>
+      </div>
+
       <div class="io-form-group">
         <label for="voiceSelect" class="io-label">
           <span>Voice Output (Speech Synthesis)</span>
           <span id="voiceCountLabel">-- voices</span>
         </label>
-        <select id="voiceSelect" class="io-select" aria-label="Speech synthesis voice">
-          <option value="default">System Default Voice</option>
-        </select>
+        <div style="display: flex; gap: 6px;">
+          <select id="voiceCategorySelect" class="io-select" style="width: 140px;" aria-label="Filter Voice Categories">
+            <option value="natural" selected>Natural / Neural</option>
+            <option value="en-gb">British English</option>
+            <option value="en-us">US English</option>
+            <option value="all">All Voices</option>
+          </select>
+          <select id="voiceSelect" class="io-select" style="flex: 1;" aria-label="Speech synthesis voice">
+            <option value="default">System Default Voice</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="io-form-group">
+        <label for="voiceVolumeSlider" class="io-label">
+          <span>Orion Voice Volume</span>
+          <span id="voiceVolumeVal">100%</span>
+        </label>
+        <div class="io-slider-wrapper">
+          <input type="range" id="voiceVolumeSlider" class="io-slider" min="0" max="100" step="5" value="100">
+        </div>
       </div>
 
       <div class="io-form-group">
@@ -269,7 +327,7 @@
 
       <div class="io-modal-footer">
         <button class="btn-hud" id="testVoiceBtn">Test Voice</button>
-        <button class="btn-hud primary" id="saveIoBtn">Apply & Close</button>
+        <button class="btn-hud primary" id="saveIoBtn">Apply & Save</button>
       </div>
     </div>
   </div>
@@ -339,6 +397,15 @@
       <div class="io-modal-footer">
         <button class="btn-hud primary" id="closeEndpointModalBtn">Close</button>
       </div>
+    </div>
+  </div>
+
+  <!-- System Shutdown Overlay -->
+  <div class="shutdown-overlay" id="shutdownOverlay">
+    <div class="shutdown-modal">
+      <div class="shutdown-icon">⏻</div>
+      <div class="shutdown-title">ORION CORE OFFLINE</div>
+      <div class="shutdown-desc">All local AI neural runners and llama-server processes have been terminated.<br>You may now close this browser tab safely.</div>
     </div>
   </div>
 

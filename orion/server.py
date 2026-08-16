@@ -11,6 +11,8 @@ import sqlite3
 import logging
 import platform
 import asyncio
+import threading
+import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -81,7 +83,17 @@ def init_db():
             )
         """)
 
-        # 3. Long-Term Facts & Memories table (Remember user preferences, facts, lore)
+        # 3. Conversation Sessions table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )
+        """)
+
+        # 4. Long-Term Facts & Memories table (Remember user preferences, facts, lore)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS memories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,6 +102,14 @@ def init_db():
                 confidence REAL NOT NULL DEFAULT 1.0,
                 created_at REAL NOT NULL,
                 last_accessed REAL NOT NULL
+            )
+        """)
+
+        # 5. Core Configuration & Last-Used Settings
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             )
         """)
 
@@ -108,6 +128,27 @@ def init_db():
         conn.commit()
 
 init_db()
+
+def get_config(key: str, default: str = "") -> str:
+    """Read a persistent configuration key from SQLite."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM config WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row["value"] if row else default
+    except Exception:
+        return default
+
+def set_config(key: str, value: str):
+    """Write a persistent configuration key to SQLite."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, value))
+            conn.commit()
+    except Exception as ex:
+        logger.warning(f"Failed setting config {key}: {ex}")
 
 # ==============================================================================
 # PROMPT ARCHITECTURE & MEMORY INJECTION
@@ -160,6 +201,37 @@ def store_memory_fact(fact: str, category: str = "general") -> bool:
         logger.warning(f"Failed to store memory: {e}")
         return False
 
+def ensure_local_ollama_running():
+    """Ensure local Ollama service is running on the system; auto-launch if offline."""
+    try:
+        with httpx.Client(timeout=1.0) as client:
+            res = client.get("http://127.0.0.1:11434/api/tags")
+            if res.status_code == 200:
+                return True
+    except Exception:
+        pass
+
+    logger.info("Local Ollama service unreachable. Attempting auto-launch in background...")
+    ollama_paths = [
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe",
+        Path(os.environ.get("PROGRAMFILES", "")) / "Ollama" / "ollama.exe",
+        Path("ollama")
+    ]
+    for p in ollama_paths:
+        try:
+            if str(p) == "ollama" or p.exists():
+                subprocess.Popen(
+                    [str(p), "serve"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+                )
+                time.sleep(2.0)
+                return True
+        except Exception as ex:
+            logger.debug(f"Failed starting {p}: {ex}")
+    return False
+
 # ==============================================================================
 # MULTI-ENGINE LOCAL MODEL DISCOVERY & INFERENCE
 # ==============================================================================
@@ -174,6 +246,10 @@ async def discover_local_models():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM endpoints WHERE is_active = 1")
         endpoints = cursor.fetchall()
+
+    # If local Ollama endpoint exists, ensure service is alive
+    if any(ep["api_type"] == "ollama" for ep in endpoints):
+        ensure_local_ollama_running()
 
     async with httpx.AsyncClient(timeout=4.0) as client:
         for ep in endpoints:
@@ -229,8 +305,11 @@ async def get_telemetry():
         memory_count = cursor.fetchone()["count"]
 
     is_any_online = any(e["status"] == "online" for e in engine_status)
-    default_text = models[0]["name"] if models else "llama3:latest"
-    default_vis = vision_models[0]["name"] if vision_models else "llava:latest"
+    saved_model = get_config("active_model", "")
+    saved_vision = get_config("active_vision_model", "")
+
+    default_text = saved_model if (saved_model and any(m["name"] == saved_model for m in models)) else (models[0]["name"] if models else "llama3:latest")
+    default_vis = saved_vision if (saved_vision and any(m["name"] == saved_vision for m in vision_models)) else (vision_models[0]["name"] if vision_models else "llava:latest")
 
     return {
         "status": "nominal" if is_any_online else "offline",
@@ -296,9 +375,14 @@ async def orion_talk(request: Request):
         user_msg["images"] = [image_data]
     messages_payload.append(user_msg)
 
-    # Save user message to database
+    # Ensure session exists and update timestamp
+    title_snippet = message[:35] + ("..." if len(message) > 35 else "")
     with get_db() as conn:
         cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET updated_at = ?",
+            (session_id, title_snippet, time.time(), time.time(), time.time())
+        )
         cursor.execute(
             "INSERT INTO messages (session_id, role, content, model, timestamp) VALUES (?, ?, ?, ?, ?)",
             (session_id, "user", message, model, time.time())
@@ -356,42 +440,48 @@ async def orion_talk(request: Request):
         return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
     # Fast JSON Non-Streaming
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            res = await client.post(
-                f"{target_endpoint}/api/chat",
-                json={"model": model, "messages": messages_payload, "stream": False}
-            )
-            if res.status_code != 200:
-                raise HTTPException(res.status_code, f"Inference engine error: {res.text}")
-            
-            res_json = res.json()
-            reply_text = res_json.get("message", {}).get("content", "").strip()
-            duration_ms = int((time.time() - start_time) * 1000)
-
-            # Persist assistant reply to database
-            with get_db() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO messages (session_id, role, content, model, timestamp) VALUES (?, ?, ?, ?, ?)",
-                    (session_id, "assistant", reply_text, model, time.time())
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                res = await client.post(
+                    f"{target_endpoint}/api/chat",
+                    json={"model": model, "messages": messages_payload, "stream": False}
                 )
-                conn.commit()
+                if res.status_code != 200:
+                    raise HTTPException(res.status_code, f"Inference engine error: {res.text}")
+                
+                res_json = res.json()
+                reply_text = res_json.get("message", {}).get("content", "").strip()
+                duration_ms = int((time.time() - start_time) * 1000)
 
-            # Automatic fact extraction check (e.g. "my name is ...", "remember that ...", "i prefer ...")
-            lower_msg = message.lower()
-            if any(trigger in lower_msg for trigger in ["my name is", "i prefer", "remember that", "remember:", "i am ", "my favorite"]):
-                store_memory_fact(message, category="user_preference")
+                # Persist assistant reply to database
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO messages (session_id, role, content, model, timestamp) VALUES (?, ?, ?, ?, ?)",
+                        (session_id, "assistant", reply_text, model, time.time())
+                    )
+                    conn.commit()
 
-            return {
-                "response": reply_text,
-                "model": model,
-                "duration_ms": duration_ms,
-                "memories_recalled": len(relevant_memories),
-                "status": "success"
-            }
-    except httpx.HTTPError as ex:
-        raise HTTPException(502, f"Failed to communicate with local AI engine: {ex}")
+                # Automatic fact extraction check (e.g. "my name is ...", "remember that ...", "i prefer ...")
+                lower_msg = message.lower()
+                if any(trigger in lower_msg for trigger in ["my name is", "i prefer", "remember that", "remember:", "i am ", "my favorite"]):
+                    store_memory_fact(message, category="user_preference")
+
+                return {
+                    "response": reply_text,
+                    "model": model,
+                    "duration_ms": duration_ms,
+                    "memories_recalled": len(relevant_memories),
+                    "status": "success"
+                }
+        except (httpx.ConnectError, httpx.HTTPError) as ex:
+            if attempt == 0 and "11434" in target_endpoint:
+                logger.warning(f"Connection failed to Ollama. Attempting auto-heal restart: {ex}")
+                ensure_local_ollama_running()
+                await asyncio.sleep(2.0)
+                continue
+            raise HTTPException(502, f"Failed to communicate with local AI engine: {ex}")
 
 @app.post("/api/vision")
 async def orion_vision(request: Request):
@@ -411,31 +501,112 @@ async def orion_vision(request: Request):
     model = data.get("model") or "llava:latest"
     start_time = time.time()
 
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            res = await client.post(
-                "http://127.0.0.1:11434/api/generate",
-                json={
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                res = await client.post(
+                    "http://127.0.0.1:11434/api/generate",
+                    json={
+                        "model": model,
+                        "prompt": f"[System: Respond in your crisp, calm Orion companion persona]\n{prompt}",
+                        "images": [image_data],
+                        "stream": False,
+                        "keep_alive": "30s"
+                    }
+                )
+                if res.status_code != 200:
+                    raise HTTPException(res.status_code, f"Vision model error: {res.text}")
+                
+                res_json = res.json()
+                response_text = res_json.get("response", "").strip()
+                duration_ms = int((time.time() - start_time) * 1000)
+
+                return {
+                    "response": response_text,
                     "model": model,
-                    "prompt": f"[System: Respond in your crisp, calm Orion companion persona]\n{prompt}",
-                    "images": [image_data],
-                    "stream": False
+                    "duration_ms": duration_ms,
+                    "status": "success"
                 }
-            )
-            if res.status_code != 200:
-                raise HTTPException(res.status_code, f"Vision model error: {res.text}")
-            
-            res_json = res.json()
-            response_text = res_json.get("response", "").strip()
-            duration_ms = int((time.time() - start_time) * 1000)
-            return {
-                "response": response_text,
-                "model": model,
-                "duration_ms": duration_ms,
-                "status": "success"
-            }
-    except httpx.HTTPError as ex:
-        raise HTTPException(502, f"Local vision engine error: {ex}")
+        except (httpx.ConnectError, httpx.HTTPError) as ex:
+            if attempt == 0:
+                ensure_local_ollama_running()
+                await asyncio.sleep(2.0)
+                continue
+            raise HTTPException(502, f"Failed to communicate with vision model: {ex}")
+
+@app.post("/api/models/purge")
+async def purge_models():
+    """Unload all models from RAM/VRAM immediately."""
+    unloaded = []
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            ps_res = await client.get("http://127.0.0.1:11434/api/ps")
+            if ps_res.status_code == 200:
+                running_models = ps_res.json().get("models", [])
+                for m in running_models:
+                    m_name = m.get("name", "")
+                    await client.post("http://127.0.0.1:11434/api/generate", json={"model": m_name, "keep_alive": 0})
+                    unloaded.append(m_name)
+    except Exception as ex:
+        pass
+    return {"status": "purged", "unloaded_models": unloaded}
+
+@app.post("/api/models/switch")
+async def switch_model(request: Request):
+    """Terminate previous/inactive model processes when switching to a new model."""
+    data = await request.json()
+    new_model = (data.get("new_model") or "").strip()
+    if new_model:
+        if any(v in new_model.lower() for v in ["llava", "vision", "moondream", "bakllava", "minicpm", "vl"]):
+            set_config("active_vision_model", new_model)
+        else:
+            set_config("active_model", new_model)
+
+    unloaded = []
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            ps_res = await client.get("http://127.0.0.1:11434/api/ps")
+            if ps_res.status_code == 200:
+                running_models = ps_res.json().get("models", [])
+                for m in running_models:
+                    m_name = m.get("name", "")
+                    # Terminate all models that aren't the newly selected one
+                    if m_name and m_name != new_model:
+                        await client.post("http://127.0.0.1:11434/api/generate", json={"model": m_name, "keep_alive": 0})
+                        unloaded.append(m_name)
+    except Exception as ex:
+        logger.warning(f"Model switch unload error: {ex}")
+    return {"status": "switched", "new_model": new_model, "unloaded": unloaded}
+
+@app.post("/api/shutdown")
+async def shutdown_system():
+    """Completely close Orion AI and terminate all active llama-server.exe processes."""
+    # 1. Gracefully tell Ollama to unload all models
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            ps_res = await client.get("http://127.0.0.1:11434/api/ps")
+            if ps_res.status_code == 200:
+                running_models = ps_res.json().get("models", [])
+                for m in running_models:
+                    m_name = m.get("name", "")
+                    await client.post("http://127.0.0.1:11434/api/generate", json={"model": m_name, "keep_alive": 0})
+    except Exception:
+        pass
+
+    # 2. Hard kill any lingering llama-server processes on Windows and exit
+    def kill_and_exit():
+        time.sleep(0.6)
+        try:
+            if platform.system() == "Windows":
+                subprocess.run(["taskkill", "/F", "/IM", "llama-server.exe"], capture_output=True, check=False)
+        except Exception:
+            pass
+        time.sleep(0.4)
+        logger.info("Orion Core shutdown complete. Exiting process.")
+        os._exit(0)
+
+    threading.Thread(target=kill_and_exit, daemon=True).start()
+    return {"status": "shutdown_initiated", "message": "Orion AI and all llama-server processes terminated."}
 
 # ==============================================================================
 # MEMORY & ENDPOINT MANAGEMENT ENDPOINTS
@@ -498,6 +669,47 @@ async def add_endpoint(request: Request):
         conn.commit()
     return {"status": "registered", "base_url": base_url}
 
+@app.get("/api/sessions")
+def get_sessions():
+    """List all saved conversation sessions with message count and preview."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.id, s.title, s.created_at, s.updated_at, COUNT(m.id) as message_count
+            FROM sessions s
+            LEFT JOIN messages m ON s.id = m.session_id
+            GROUP BY s.id
+            ORDER BY s.updated_at DESC
+        """)
+        sessions = [dict(r) for r in cursor.fetchall()]
+        return {"sessions": sessions}
+
+@app.post("/api/sessions")
+async def create_session(request: Request):
+    """Create a new conversation session."""
+    data = await request.json()
+    title = (data.get("title") or "New Session").strip()
+    session_id = data.get("session_id") or f"session_{int(time.time()*1000)}"
+    now = time.time()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at",
+            (session_id, title, now, now)
+        )
+        conn.commit()
+    return {"id": session_id, "title": title, "created_at": now}
+
+@app.delete("/api/sessions/{session_id}")
+def delete_session(session_id: str):
+    """Delete a conversation session and all its messages."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        cursor.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
+        conn.commit()
+    return {"status": "deleted", "session_id": session_id}
+
 @app.get("/api/history")
 def get_history(session_id: str = "default"):
     """Get chronological conversation history for a session."""
@@ -515,6 +727,7 @@ async def clear_history(request: Request):
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
+        cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         conn.commit()
     return {"status": "cleared", "session_id": session_id}
 

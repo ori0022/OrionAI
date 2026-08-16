@@ -4,7 +4,7 @@ Orion is a **100% local, private, voice-first AI companion** with persistent SQL
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ### 1. Launch Orion
 Double-click `OrionAI.bat` or run:
@@ -15,7 +15,7 @@ Open **[http://127.0.0.1:8000](http://127.0.0.1:8000)** in your browser.
 
 ---
 
-## 💎 Features
+## Features
 
 - **🧠 Multi-Engine & Model Integrations**: Connects directly to Ollama (`http://127.0.0.1:11434`), LM Studio (`http://127.0.0.1:1234/v1`), llama.cpp, KoboldCPP, vLLM, and any OpenAI-compatible local endpoint.
 - **💾 Persistent Long-Term Memory (SQLite)**: Automatically stores user instructions, facts, and conversation history so Orion remembers you across sessions and days.
