@@ -6,11 +6,71 @@
 (function () {
   'use strict';
 
+  const DEFAULT_MODELS_FULL = [
+    {
+      name: 'llama3:latest',
+      size_gb: 4.3,
+      resource_tier: 'MEDIUM',
+      description: 'Meta Llama 3 (8B). High-speed general conversational intelligence with refined reasoning.',
+      type: 'ollama'
+    },
+    {
+      name: 'qwen2.5-coder:14b',
+      size_gb: 8.4,
+      resource_tier: 'MEDIUM',
+      description: 'Alibaba Qwen 2.5 Coder (14B). Elite code generation, multi-file refactoring, and complex logic.',
+      type: 'ollama'
+    },
+    {
+      name: 'qwen3-coder:30b',
+      size_gb: 18.2,
+      resource_tier: 'HIGH',
+      description: 'Alibaba Qwen 3 Coder (30B MoE). Heavyweight frontier programming intelligence for deep software engineering.',
+      type: 'ollama'
+    },
+    {
+      name: 'deepseek-coder:6.7b',
+      size_gb: 3.8,
+      resource_tier: 'LOW',
+      description: 'DeepSeek Coder (6.7B). Ultra-fast, lightweight programming model optimized for quick code assistance.',
+      type: 'ollama'
+    }
+  ];
+
+  const DEFAULT_VISION_MODELS_FULL = [
+    {
+      name: 'moondream:latest',
+      size_gb: 1.6,
+      resource_tier: 'LOW',
+      description: 'Moondream2 (1.86B). Ultra-fast, lightweight vision model for rapid screen parsing and optical recognition.',
+      type: 'ollama'
+    },
+    {
+      name: 'llava:latest',
+      size_gb: 4.4,
+      resource_tier: 'MEDIUM',
+      description: 'LLaVA 1.5 (7B). High-precision multimodal vision analysis for complex screen and camera captures.',
+      type: 'ollama'
+    }
+  ];
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   // --- State ---
   const state = {
     connected: false,
     activeModel: 'llama3:latest',
     activeVisionModel: 'llava:latest',
+    modelsFull: [...DEFAULT_MODELS_FULL],
+    visionModelsFull: [...DEFAULT_VISION_MODELS_FULL],
     isListening: false,
     isSpeaking: false,
     isProcessing: false,
@@ -129,16 +189,38 @@
     els.addMemoryBtn = document.getElementById('addMemoryBtn');
     els.memoryListContainer = document.getElementById('memoryListContainer');
 
-    // Endpoint Modal
-    els.endpointModalBtn = document.getElementById('endpointModalBtn');
-    els.endpointModalBackdrop = document.getElementById('endpointModalBackdrop');
-    els.endpointCloseBtn = document.getElementById('endpointCloseBtn');
-    els.closeEndpointModalBtn = document.getElementById('closeEndpointModalBtn');
+    // Endpoint Elements
     els.endpointList = document.getElementById('endpointList');
     els.endpointNameInput = document.getElementById('endpointNameInput');
     els.endpointUrlInput = document.getElementById('endpointUrlInput');
     els.endpointTypeSelect = document.getElementById('endpointTypeSelect');
     els.addEndpointBtn = document.getElementById('addEndpointBtn');
+
+    // Unified Tactical Settings Modal (Dropdown Category Style)
+    els.openSettingsModalBtn = document.getElementById('openSettingsModalBtn');
+    els.settingsModalBackdrop = document.getElementById('settingsModalBackdrop');
+    els.settingsCloseBtn = document.getElementById('settingsCloseBtn');
+    els.closeSettingsModalBtn = document.getElementById('closeSettingsModalBtn');
+    els.settingsCategorySelect = document.getElementById('settingsCategorySelect');
+    els.settingsBrainSelect = document.getElementById('settingsBrainSelect');
+    els.activeBrainBadge = document.getElementById('activeBrainBadge');
+    els.brainSpecsCard = document.getElementById('brainSpecsCard');
+    els.brainSpecsName = document.getElementById('brainSpecsName');
+    els.brainSpecsTier = document.getElementById('brainSpecsTier');
+    els.brainSpecsRam = document.getElementById('brainSpecsRam');
+    els.brainSpecsDesc = document.getElementById('brainSpecsDesc');
+    els.settingsVisionSelect = document.getElementById('settingsVisionSelect');
+    els.activeVisionBadge = document.getElementById('activeVisionBadge');
+    els.visionSpecsCard = document.getElementById('visionSpecsCard');
+    els.visionSpecsName = document.getElementById('visionSpecsName');
+    els.visionSpecsTier = document.getElementById('visionSpecsTier');
+    els.visionSpecsRam = document.getElementById('visionSpecsRam');
+    els.visionSpecsDesc = document.getElementById('visionSpecsDesc');
+    els.detailedBrainList = document.getElementById('detailedBrainList');
+    els.settingsMemoryCount = document.getElementById('settingsMemoryCount');
+    els.speechToggleSettings = document.getElementById('speechToggleSettings');
+    els.muteToggleSettings = document.getElementById('muteToggleSettings');
+    els.purgeRamSettingsBtn = document.getElementById('purgeRamSettingsBtn');
   }
 
   // ==========================================================================
@@ -1113,6 +1195,59 @@
   // 6. CONVERSATION DISPATCHER & TELEMETRY
   // ==========================================================================
 
+  function updateModelSpecsUI() {
+    const models = (state.modelsFull && state.modelsFull.length > 0) ? state.modelsFull : DEFAULT_MODELS_FULL;
+    const visionModels = (state.visionModelsFull && state.visionModelsFull.length > 0) ? state.visionModelsFull : DEFAULT_VISION_MODELS_FULL;
+
+    const currentBrain = models.find(m => m.name === state.activeModel) || models[0];
+    if (currentBrain) {
+      if (els.brainSpecsName) els.brainSpecsName.textContent = currentBrain.name;
+      if (els.brainSpecsTier) {
+        const tier = currentBrain.resource_tier || 'MEDIUM';
+        els.brainSpecsTier.textContent = tier;
+        els.brainSpecsTier.className = `tier-badge ${tier}`;
+      }
+      if (els.activeBrainBadge) {
+        const tier = currentBrain.resource_tier || 'MEDIUM';
+        els.activeBrainBadge.textContent = tier;
+        els.activeBrainBadge.className = `tier-badge ${tier}`;
+      }
+      if (els.brainSpecsRam) {
+        const sizeStr = currentBrain.size_gb ? `⚡ ~${currentBrain.size_gb} GB RAM` : (currentBrain.size ? `⚡ ~${(currentBrain.size / (1024**3)).toFixed(1)} GB RAM` : '⚡ Local Neural');
+        els.brainSpecsRam.textContent = sizeStr;
+      }
+      if (els.brainSpecsDesc) {
+        els.brainSpecsDesc.textContent = currentBrain.description || 'Local conversational reasoning intelligence.';
+      }
+      if (els.settingsBrainSelect) els.settingsBrainSelect.value = currentBrain.name;
+      if (els.modelSelect) els.modelSelect.value = currentBrain.name;
+    }
+
+    const currentVision = visionModels.find(m => m.name === state.activeVisionModel) || visionModels[0];
+    if (currentVision) {
+      if (els.visionSpecsName) els.visionSpecsName.textContent = currentVision.name;
+      if (els.visionSpecsTier) {
+        const tier = currentVision.resource_tier || 'LOW';
+        els.visionSpecsTier.textContent = tier;
+        els.visionSpecsTier.className = `tier-badge ${tier}`;
+      }
+      if (els.activeVisionBadge) {
+        const tier = currentVision.resource_tier || 'LOW';
+        els.activeVisionBadge.textContent = tier;
+        els.activeVisionBadge.className = `tier-badge ${tier}`;
+      }
+      if (els.visionSpecsRam) {
+        const sizeStr = currentVision.size_gb ? `⚡ ~${currentVision.size_gb} GB RAM` : (currentVision.size ? `⚡ ~${(currentVision.size / (1024**3)).toFixed(1)} GB RAM` : '⚡ Multimodal');
+        els.visionSpecsRam.textContent = sizeStr;
+      }
+      if (els.visionSpecsDesc) {
+        els.visionSpecsDesc.textContent = currentVision.description || 'Local multimodal vision recognition model.';
+      }
+      if (els.settingsVisionSelect) els.settingsVisionSelect.value = currentVision.name;
+      if (els.visionModelSelect) els.visionModelSelect.value = currentVision.name;
+    }
+  }
+
   async function loadTelemetry() {
     try {
       const res = await fetch('/api/telemetry');
@@ -1120,6 +1255,13 @@
       const data = await res.json();
 
       state.connected = data.status === 'nominal';
+
+      if (data.models_full && data.models_full.length > 0) {
+        state.modelsFull = data.models_full;
+      }
+      if (data.vision_models_full && data.vision_models_full.length > 0) {
+        state.visionModelsFull = data.vision_models_full;
+      }
 
       if (!state.activeModel || (data.models && !data.models.includes(state.activeModel))) {
         state.activeModel = data.default_model || (data.models && data.models[0]) || 'llama3:latest';
@@ -1137,6 +1279,9 @@
       if (els.memoryCountBadge && data.database) {
         els.memoryCountBadge.textContent = data.database.total_memories;
       }
+      if (els.settingsMemoryCount && data.database) {
+        els.settingsMemoryCount.textContent = data.database.total_memories;
+      }
 
       function getModelTier(mObj, name) {
         if (mObj && mObj.resource_tier) return mObj.resource_tier;
@@ -1146,38 +1291,49 @@
         return 'LOW';
       }
 
-      // Populate text models without resetting selection
-      if (els.modelSelect && data.models && data.models.length > 0) {
-        const currentModel = state.activeModel;
-        els.modelSelect.innerHTML = '';
-        data.models.forEach(m => {
+      // Populate text model dropdowns (header and settings)
+      const modelsList = (data.models && data.models.length > 0) ? data.models : state.modelsFull.map(m => m.name);
+      [els.modelSelect, els.settingsBrainSelect].forEach(selectEl => {
+        if (!selectEl) return;
+        const currentVal = state.activeModel;
+        selectEl.innerHTML = '';
+        modelsList.forEach(m => {
           const mName = typeof m === 'string' ? m : m.name;
-          const fullInfo = (data.models_full || []).find(f => f.name === mName);
+          const fullInfo = (state.modelsFull || []).find(f => f.name === mName);
           const tier = getModelTier(fullInfo, mName);
           const opt = document.createElement('option');
           opt.value = mName;
           opt.textContent = `${mName} [${tier}]`;
-          if (mName === currentModel) opt.selected = true;
-          els.modelSelect.appendChild(opt);
+          if (mName === currentVal) opt.selected = true;
+          selectEl.appendChild(opt);
         });
-        els.modelSelect.value = currentModel;
-      }
+        selectEl.value = currentVal;
+      });
 
-      // Populate vision models without resetting selection
-      if (els.visionModelSelect && data.vision_models && data.vision_models.length > 0) {
-        const currentVision = state.activeVisionModel;
-        els.visionModelSelect.innerHTML = '';
-        data.vision_models.forEach(m => {
+      // Populate vision model dropdowns (header and settings)
+      const visionList = (data.vision_models && data.vision_models.length > 0) ? data.vision_models : state.visionModelsFull.map(m => m.name);
+      [els.visionModelSelect, els.settingsVisionSelect].forEach(selectEl => {
+        if (!selectEl) return;
+        const currentVal = state.activeVisionModel;
+        selectEl.innerHTML = '';
+        visionList.forEach(m => {
           const mName = typeof m === 'string' ? m : m.name;
-          const fullInfo = (data.vision_models_full || []).find(f => f.name === mName);
+          const fullInfo = (state.visionModelsFull || []).find(f => f.name === mName);
           const tier = getModelTier(fullInfo, mName);
           const opt = document.createElement('option');
           opt.value = mName;
           opt.textContent = `${mName} [${tier}]`;
-          if (mName === currentVision) opt.selected = true;
-          els.visionModelSelect.appendChild(opt);
+          if (mName === currentVal) opt.selected = true;
+          selectEl.appendChild(opt);
         });
-        els.visionModelSelect.value = currentVision;
+        selectEl.value = currentVal;
+      });
+
+      try {
+        updateModelSpecsUI();
+        renderDetailedModelCards();
+      } catch (uiErr) {
+        console.warn('UI card render notice:', uiErr);
       }
     } catch (e) {
       console.warn('Telemetry load failed:', e);
@@ -1185,7 +1341,99 @@
         els.statusDot.className = 'status-dot degraded';
         els.statusText.textContent = 'DISCONNECTED';
       }
+      try {
+        updateModelSpecsUI();
+        renderDetailedModelCards();
+      } catch (uiErr) {}
     }
+  }
+
+  function renderDetailedModelCards() {
+    const brainModels = (state.modelsFull && state.modelsFull.length > 0) ? state.modelsFull : DEFAULT_MODELS_FULL;
+    const visionModels = (state.visionModelsFull && state.visionModelsFull.length > 0) ? state.visionModelsFull : DEFAULT_VISION_MODELS_FULL;
+    const allModels = [
+      ...brainModels.map(m => ({ ...m, category: 'BRAIN' })),
+      ...visionModels.map(m => ({ ...m, category: 'VISION' }))
+    ];
+
+    if (!els.detailedBrainList) return;
+    els.detailedBrainList.innerHTML = '';
+
+    allModels.forEach(m => {
+      const isActive = (m.category === 'BRAIN' && m.name === state.activeModel) || (m.category === 'VISION' && m.name === state.activeVisionModel);
+      const card = document.createElement('div');
+      card.className = `model-card ${isActive ? 'active-model' : ''}`;
+
+      const sizeStr = m.size_gb ? `⚡ ~${m.size_gb} GB RAM` : (m.size ? `⚡ ~${(m.size / (1024**3)).toFixed(1)} GB RAM` : '⚡ Local Neural');
+      const tier = m.resource_tier || 'MEDIUM';
+      const desc = m.description || (m.category === 'VISION' ? 'Multimodal visual recognition model.' : 'Conversational reasoning intelligence model.');
+
+      card.innerHTML = `
+        <div class="model-card-header">
+          <div class="model-card-title-group">
+            <span class="model-card-name">${escapeHtml(m.name)}</span>
+            <span class="tier-badge ${tier}">${tier}</span>
+            <span style="font-size: 9px; font-family: var(--font-mono); color: var(--text-muted); padding: 1px 4px; border: 1px solid var(--border-subtle); border-radius: 2px;">${m.category}</span>
+          </div>
+          <div class="model-card-meta">
+            <span class="model-footprint">${sizeStr}</span>
+          </div>
+        </div>
+        <p class="model-card-desc">${escapeHtml(desc)}</p>
+        <div class="model-card-footer">
+          <button class="btn-hud ${isActive ? 'primary' : ''}" style="min-width: 140px;">
+            ${isActive ? `✓ ACTIVE ${m.category}` : `SELECT ${m.category}`}
+          </button>
+        </div>
+      `;
+
+      const btn = card.querySelector('button');
+      btn.addEventListener('click', async () => {
+        if (m.category === 'BRAIN') {
+          if (state.activeModel === m.name) return;
+          const oldModel = state.activeModel;
+          state.activeModel = m.name;
+          if (els.modelSelect) els.modelSelect.value = m.name;
+          if (els.settingsBrainSelect) els.settingsBrainSelect.value = m.name;
+          saveSettings();
+          sfx.activate();
+          updateModelSpecsUI();
+          renderDetailedModelCards();
+
+          try {
+            await fetch('/api/models/switch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ new_model: m.name, old_model: oldModel })
+            });
+          } catch (err) {
+            console.warn('Brain switch notice:', err);
+          }
+        } else {
+          if (state.activeVisionModel === m.name) return;
+          const oldVision = state.activeVisionModel;
+          state.activeVisionModel = m.name;
+          if (els.visionModelSelect) els.visionModelSelect.value = m.name;
+          if (els.settingsVisionSelect) els.settingsVisionSelect.value = m.name;
+          saveSettings();
+          sfx.activate();
+          updateModelSpecsUI();
+          renderDetailedModelCards();
+
+          try {
+            await fetch('/api/models/switch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ new_model: m.name, old_model: oldVision })
+            });
+          } catch (err) {
+            console.warn('Vision switch notice:', err);
+          }
+        }
+      });
+
+      els.detailedBrainList.appendChild(card);
+    });
   }
 
   async function sendUserMessage(msgText) {
@@ -1668,17 +1916,165 @@
       });
     }
 
-    // Hardware I/O Modal Handlers
-    if (els.ioConfigBtn) {
-      els.ioConfigBtn.addEventListener('click', async () => {
+    // Unified Tactical Settings Modal Handlers
+    if (els.openSettingsModalBtn) {
+      els.openSettingsModalBtn.addEventListener('click', () => {
         initAudioContext();
-        await populateMicSelect(false);
+        if (els.settingsModalBackdrop) {
+          els.settingsModalBackdrop.classList.add('open');
+        }
+        sfx.click();
+
+        updateModelSpecsUI();
+        renderDetailedModelCards();
+
+        if (els.speechToggleSettings) {
+          els.speechToggleSettings.textContent = state.autoSpeak ? 'VOICE: ON' : 'VOICE: OFF';
+        }
+        if (els.muteToggleSettings) {
+          els.muteToggleSettings.textContent = state.audioMuted ? 'SFX: OFF' : 'SFX: ON';
+        }
+
+        // Non-blocking background sync
+        loadTelemetry().catch(() => {});
+        populateMicSelect(false).catch(() => {});
         populateVoiceSelect();
-        els.ioModalBackdrop.classList.add('open');
+        loadMemories().catch(() => {});
+        loadEndpoints().catch(() => {});
+      });
+    }
+
+    if (els.settingsCloseBtn) {
+      els.settingsCloseBtn.addEventListener('click', () => {
+        stopMicTest();
+        saveSettings();
+        if (els.settingsModalBackdrop) els.settingsModalBackdrop.classList.remove('open');
         sfx.click();
       });
     }
 
+    if (els.closeSettingsModalBtn) {
+      els.closeSettingsModalBtn.addEventListener('click', () => {
+        stopMicTest();
+        saveSettings();
+        if (els.settingsModalBackdrop) els.settingsModalBackdrop.classList.remove('open');
+        sfx.click();
+      });
+    }
+
+    if (els.settingsModalBackdrop) {
+      els.settingsModalBackdrop.addEventListener('click', (e) => {
+        if (e.target === els.settingsModalBackdrop) {
+          stopMicTest();
+          saveSettings();
+          els.settingsModalBackdrop.classList.remove('open');
+        }
+      });
+    }
+
+    // Settings Category Dropdown Handler
+    if (els.settingsCategorySelect) {
+      els.settingsCategorySelect.addEventListener('change', (e) => {
+        const targetId = e.target.value;
+        document.querySelectorAll('.settings-panel').forEach(panel => {
+          panel.classList.remove('active');
+        });
+        const activePanel = document.getElementById(targetId);
+        if (activePanel) {
+          activePanel.classList.add('active');
+        }
+        sfx.click();
+      });
+    }
+
+    // Settings Modal Brain Dropdown Handler
+    if (els.settingsBrainSelect) {
+      els.settingsBrainSelect.addEventListener('change', async (e) => {
+        const newModel = e.target.value;
+        if (state.activeModel === newModel) return;
+        const oldModel = state.activeModel;
+        state.activeModel = newModel;
+        if (els.modelSelect) els.modelSelect.value = newModel;
+        saveSettings();
+        sfx.activate();
+        updateModelSpecsUI();
+        renderDetailedModelCards();
+
+        try {
+          await fetch('/api/models/switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_model: newModel, old_model: oldModel })
+          });
+        } catch (err) {
+          console.warn('Brain switch notice:', err);
+        }
+      });
+    }
+
+    // Settings Modal Vision Dropdown Handler
+    if (els.settingsVisionSelect) {
+      els.settingsVisionSelect.addEventListener('change', async (e) => {
+        const newVision = e.target.value;
+        if (state.activeVisionModel === newVision) return;
+        const oldVision = state.activeVisionModel;
+        state.activeVisionModel = newVision;
+        if (els.visionModelSelect) els.visionModelSelect.value = newVision;
+        saveSettings();
+        sfx.activate();
+        updateModelSpecsUI();
+        renderDetailedModelCards();
+
+        try {
+          await fetch('/api/models/switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_model: newVision, old_model: oldVision })
+          });
+        } catch (err) {
+          console.warn('Vision switch notice:', err);
+        }
+      });
+    }
+
+    if (els.speechToggleSettings) {
+      els.speechToggleSettings.addEventListener('click', () => {
+        state.autoSpeak = !state.autoSpeak;
+        els.speechToggleSettings.textContent = state.autoSpeak ? 'VOICE: ON' : 'VOICE: OFF';
+        saveSettings();
+        if (state.autoSpeak) sfx.click();
+      });
+    }
+
+    if (els.muteToggleSettings) {
+      els.muteToggleSettings.addEventListener('click', () => {
+        state.audioMuted = !state.audioMuted;
+        els.muteToggleSettings.textContent = state.audioMuted ? 'SFX: OFF' : 'SFX: ON';
+        saveSettings();
+        if (!state.audioMuted) sfx.activate();
+      });
+    }
+
+    if (els.purgeRamSettingsBtn) {
+      els.purgeRamSettingsBtn.addEventListener('click', async () => {
+        try {
+          initAudioContext();
+          els.purgeRamSettingsBtn.textContent = 'PURGING...';
+          const res = await fetch('/api/models/purge', { method: 'POST' });
+          if (res.ok) {
+            sfx.activate();
+            els.purgeRamSettingsBtn.textContent = 'RAM PURGED ✓';
+            setTimeout(() => {
+              els.purgeRamSettingsBtn.textContent = 'PURGE RAM';
+            }, 1800);
+          }
+        } catch (e) {
+          console.warn('Purge failed:', e);
+        }
+      });
+    }
+
+    // Hardware I/O Handlers
     if (els.scanMicsBtn) {
       els.scanMicsBtn.addEventListener('click', async () => {
         initAudioContext();
@@ -1687,19 +2083,11 @@
       });
     }
 
-    if (els.ioCloseBtn) {
-      els.ioCloseBtn.addEventListener('click', () => {
-        stopMicTest();
-        saveSettings();
-        els.ioModalBackdrop.classList.remove('open');
-      });
-    }
-
     if (els.saveIoBtn) {
       els.saveIoBtn.addEventListener('click', () => {
         stopMicTest();
         saveSettings();
-        els.ioModalBackdrop.classList.remove('open');
+        if (els.settingsModalBackdrop) els.settingsModalBackdrop.classList.remove('open');
         sfx.click();
       });
     }
@@ -1786,51 +2174,11 @@
       };
     }
 
-    // Memory Modal Handlers
-    if (els.memoryModalBtn) {
-      els.memoryModalBtn.addEventListener('click', () => {
-        loadMemories();
-        els.memoryModalBackdrop.classList.add('open');
-        sfx.click();
-      });
-    }
-
-    if (els.memoryCloseBtn) {
-      els.memoryCloseBtn.addEventListener('click', () => {
-        els.memoryModalBackdrop.classList.remove('open');
-      });
-    }
-
-    if (els.closeMemoryModalBtn) {
-      els.closeMemoryModalBtn.addEventListener('click', () => {
-        els.memoryModalBackdrop.classList.remove('open');
-      });
-    }
-
+    // Memory Handlers
     if (els.refreshMemoryBtn) els.refreshMemoryBtn.addEventListener('click', loadMemories);
     if (els.addMemoryBtn) els.addMemoryBtn.addEventListener('click', addNewMemory);
 
-    // AI Engine Modal Handlers
-    if (els.endpointModalBtn) {
-      els.endpointModalBtn.addEventListener('click', () => {
-        loadEndpoints();
-        els.endpointModalBackdrop.classList.add('open');
-        sfx.click();
-      });
-    }
-
-    if (els.endpointCloseBtn) {
-      els.endpointCloseBtn.addEventListener('click', () => {
-        els.endpointModalBackdrop.classList.remove('open');
-      });
-    }
-
-    if (els.closeEndpointModalBtn) {
-      els.closeEndpointModalBtn.addEventListener('click', () => {
-        els.endpointModalBackdrop.classList.remove('open');
-      });
-    }
-
+    // AI Engine Handlers
     if (els.addEndpointBtn) els.addEndpointBtn.addEventListener('click', addNewEndpoint);
 
     // Quick Command Chips
@@ -1845,9 +2193,7 @@
     // Spacebar Push-to-Talk
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        if (els.ioModalBackdrop) els.ioModalBackdrop.classList.remove('open');
-        if (els.memoryModalBackdrop) els.memoryModalBackdrop.classList.remove('open');
-        if (els.endpointModalBackdrop) els.endpointModalBackdrop.classList.remove('open');
+        if (els.settingsModalBackdrop) els.settingsModalBackdrop.classList.remove('open');
         stopMicTest();
         return;
       }

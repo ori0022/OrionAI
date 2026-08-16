@@ -12,21 +12,21 @@
     
     <!-- Top Telemetry Header -->
     <header class="hud-header" id="hudHeader">
-      <div class="brand-section">
-        <div class="brand-badge" id="brandBadge">
-          <svg class="brand-svg" viewBox="0 0 40 40" fill="none" stroke="currentColor">
-            <circle cx="20" cy="20" r="16" stroke-width="1.5" stroke-dasharray="4 2" />
-            <polygon points="20,8 30,28 10,28" stroke-width="1.5" />
-            <circle cx="20" cy="20" r="3" fill="currentColor" />
-          </svg>
+      <div class="hud-left-group">
+        <div class="brand-section">
+          <div class="brand-badge" id="brandBadge">
+            <svg class="brand-svg" viewBox="0 0 40 40" fill="none" stroke="currentColor">
+              <circle cx="20" cy="20" r="16" stroke-width="1.5" stroke-dasharray="4 2" />
+              <polygon points="20,8 30,28 10,28" stroke-width="1.5" />
+              <circle cx="20" cy="20" r="3" fill="currentColor" />
+            </svg>
+          </div>
+          <div class="brand-info">
+            <h1>Orion Core</h1>
+            <div class="brand-subtitle">Autonomous Local Intelligence // v2.0</div>
+          </div>
         </div>
-        <div class="brand-info">
-          <h1>Orion Core</h1>
-          <div class="brand-subtitle">Autonomous Local Intelligence // v2.0</div>
-        </div>
-      </div>
 
-      <div class="telemetry-cluster">
         <div class="telemetry-pill" id="statusPill">
           <div class="status-dot" id="statusDot"></div>
           <span id="statusText">CONNECTING...</span>
@@ -45,15 +45,11 @@
             <option value="llava:latest">llava:latest</option>
           </select>
         </div>
+      </div>
 
-        <!-- Wing Slide Controls & Utility Buttons -->
-        <button class="btn-hud" id="toggleLeftWingBtn" title="Slide Diagnostics, Sensors & Protocols">◂ SENSORS</button>
-        <button class="btn-hud" id="toggleRightWingBtn" title="Slide Feed & Saved Chats">FEED & CHATS ▸</button>
-        <button class="btn-hud" id="memoryModalBtn" aria-label="Open Memory Manager">MEMORY (<span id="memoryCountBadge">0</span>)</button>
-        <button class="btn-hud" id="endpointModalBtn" aria-label="Configure Local AI Endpoints">AI ENGINES</button>
-        <button class="btn-hud" id="ioConfigBtn" aria-label="Configure Audio Input and Output Devices">I/O CONFIG</button>
-        <button class="btn-hud" id="speechToggle" aria-label="Toggle Voice Readout">VOICE: ON</button>
-        <button class="btn-hud" id="muteToggle" aria-label="Toggle SFX">SFX: ON</button>
+      <div class="hud-right-group">
+        <!-- Master Settings & Exit Buttons -->
+        <button class="btn-hud primary" id="openSettingsModalBtn" title="Open Orion Settings & Hardware Configuration">SETTINGS ⚙</button>
         <button class="btn-hud btn-exit" id="exitSystemBtn" title="Completely shutdown Orion and kill all llama-server processes">EXIT ⏻</button>
       </div>
     </header>
@@ -230,172 +226,263 @@
 
   </div>
 
-  <!-- Hardware I/O Configuration Modal -->
-  <div class="io-modal-backdrop" id="ioModalBackdrop" role="dialog" aria-modal="true" aria-labelledby="ioModalTitle">
-    <div class="io-modal-content">
+  <!-- Unified Master Tactical Settings Hub Modal (Dropdown Selection Style) -->
+  <div class="io-modal-backdrop" id="settingsModalBackdrop" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+    <div class="io-modal-content settings-modal-content">
       <div class="io-modal-header">
-        <h2 class="io-modal-title" id="ioModalTitle">Tactical Audio & I/O Hardware</h2>
-        <button class="io-close-btn" id="ioCloseBtn" aria-label="Close I/O Configuration">&times;</button>
+        <div class="settings-header-info">
+          <h2 class="io-modal-title" id="settingsModalTitle">TACTICAL SETTINGS // ORION WORKSTATION</h2>
+          <span class="settings-header-subtitle">Local AI Neural Models, Audio I/O Hardware, Long-Term Memory & Protocols</span>
+        </div>
+        <button class="io-close-btn" id="settingsCloseBtn" aria-label="Close Settings">&times;</button>
       </div>
 
-      <div class="io-form-group">
-        <label for="micSelect" class="io-label">
-          <span>Audio Input (Microphone)</span>
-          <span id="micStatusLabel" style="color: var(--emerald-nominal);">Ready</span>
+      <!-- Settings Category Dropdown Selector -->
+      <div class="settings-category-picker">
+        <label for="settingsCategorySelect" class="io-label" style="font-family: var(--font-mono); color: var(--ice-blue); font-size: 11px; letter-spacing: 1px; margin-bottom: 6px;">
+          CONFIGURATION CATEGORY:
         </label>
-        <div style="display: flex; gap: 6px;">
-          <select id="micSelect" class="io-select" aria-label="Microphone input device" style="flex: 1;">
-            <option value="default">Default System Microphone</option>
-          </select>
-          <button class="btn-hud" id="scanMicsBtn" title="Scan and unlock all available microphones">Scan Mics</button>
-          <button class="btn-hud" id="toggleMicTestBtn" style="white-space: nowrap;">Test Mic</button>
-        </div>
+        <select id="settingsCategorySelect" class="io-select" style="font-size: 13px; font-weight: 700; padding: 10px 14px; border-color: rgba(86, 204, 242, 0.4); background: #0c121d; color: var(--text-highlight);">
+          <option value="secQuickControls" selected>🎛️ Quick Controls</option>
+          <option value="secPersistentMemory">💾 Persistent Memory</option>
+          <option value="secNeuralCore">🧠 Neural Core & Models</option>
+          <option value="secAiEngines">🌐 AI Engines</option>
+          <option value="secAudioIo">🎙️ Audio & I/O Hardware</option>
+        </select>
+      </div>
 
-        <!-- Live Volume Level VU Meter -->
-        <div class="mic-meter-container" id="micMeterContainer">
-          <div class="mic-meter-header">
-            <span class="meter-label">Live Input Sensitivity</span>
-            <span class="meter-val" id="micLevelText">0%</span>
+      <div class="settings-panels-container">
+
+        <!-- 1. QUICK CONTROLS -->
+        <section class="settings-panel active" id="secQuickControls">
+          <div class="quick-controls-grid">
+            <div class="control-card">
+              <div class="control-card-header">
+                <span class="control-title">Voice Readout</span>
+                <span class="control-desc">Enable or disable Orion's voice spoken response output</span>
+              </div>
+              <button class="btn-hud" id="speechToggleSettings">VOICE: ON</button>
+            </div>
+
+            <div class="control-card">
+              <div class="control-card-header">
+                <span class="control-title">Tactical Sound Effects (SFX)</span>
+                <span class="control-desc">Interface audio feedback, clicks, and processing chimes</span>
+              </div>
+              <button class="btn-hud" id="muteToggleSettings">SFX: ON</button>
+            </div>
+
+            <div class="control-card">
+              <div class="control-card-header">
+                <span class="control-title">Free Inactive RAM</span>
+                <span class="control-desc">Instantly purge cached model weights from memory</span>
+              </div>
+              <button class="btn-hud" id="purgeRamSettingsBtn">PURGE RAM</button>
+            </div>
           </div>
-          <div class="mic-meter-track">
-            <div class="mic-meter-fill" id="micMeterFill"></div>
+        </section>
+
+        <!-- 2. PERSISTENT MEMORY -->
+        <section class="settings-panel" id="secPersistentMemory">
+          <p style="font-size: 11px; color: var(--text-secondary); margin: 0 0 12px 0;">
+            Orion automatically stores user preferences, key instructions, and persistent facts here so it remembers you across sessions and days.
+          </p>
+
+          <div class="memory-input-row">
+            <input type="text" id="newMemoryInput" class="io-select" placeholder="Add a persistent fact (e.g. 'User prefers concise Python code')...">
+            <button class="btn-hud primary" id="addMemoryBtn" style="white-space: nowrap;">Store Fact</button>
           </div>
-        </div>
-      </div>
 
-      <!-- Audio Output (Speakers / Headset) -->
-      <div class="io-form-group">
-        <label for="speakerSelect" class="io-label">
-          <span>Audio Output (Speakers / Headset)</span>
-          <span id="speakerStatusLabel" style="color: var(--emerald-nominal);">Ready</span>
-        </label>
-        <div style="display: flex; gap: 6px;">
-          <select id="speakerSelect" class="io-select" aria-label="Audio output speaker device" style="flex: 1;">
-            <option value="default">Default System Output</option>
-          </select>
-          <button class="btn-hud" id="testSpeakerBtn" style="white-space: nowrap;">Test Speaker</button>
-        </div>
-      </div>
+          <div class="memory-list-container" id="memoryListContainer" style="margin-top: 12px;">
+            <!-- Dynamic memory items inserted here -->
+          </div>
 
-      <div class="io-form-group">
-        <label for="voiceSelect" class="io-label">
-          <span>Voice Output (Speech Synthesis)</span>
-          <span id="voiceCountLabel">-- voices</span>
-        </label>
-        <div style="display: flex; gap: 6px;">
-          <select id="voiceCategorySelect" class="io-select" style="width: 140px;" aria-label="Filter Voice Categories">
-            <option value="natural" selected>Natural / Neural</option>
-            <option value="en-gb">British English</option>
-            <option value="en-us">US English</option>
-            <option value="all">All Voices</option>
-          </select>
-          <select id="voiceSelect" class="io-select" style="flex: 1;" aria-label="Speech synthesis voice">
-            <option value="default">System Default Voice</option>
-          </select>
-        </div>
-      </div>
+          <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;">
+            <button class="btn-hud" id="refreshMemoryBtn">Refresh Memories</button>
+          </div>
+        </section>
 
-      <div class="io-form-group">
-        <label for="voiceVolumeSlider" class="io-label">
-          <span>Orion Voice Volume</span>
-          <span id="voiceVolumeVal">100%</span>
-        </label>
-        <div class="io-slider-wrapper">
-          <input type="range" id="voiceVolumeSlider" class="io-slider" min="0" max="100" step="5" value="100">
-        </div>
-      </div>
-
-      <div class="io-form-group">
-        <label for="voiceRateSlider" class="io-label">
-          <span>Voice Cadence (Speed)</span>
-          <span id="voiceRateVal">1.05x</span>
-        </label>
-        <div class="io-slider-wrapper">
-          <input type="range" id="voiceRateSlider" class="io-slider" min="0.7" max="1.4" step="0.05" value="1.05">
-        </div>
-      </div>
-
-      <div class="io-form-group">
-        <label for="voicePitchSlider" class="io-label">
-          <span>Voice Pitch (Tone)</span>
-          <span id="voicePitchVal">0.95x</span>
-        </label>
-        <div class="io-slider-wrapper">
-          <input type="range" id="voicePitchSlider" class="io-slider" min="0.7" max="1.3" step="0.05" value="0.95">
-        </div>
-      </div>
-
-      <div class="io-modal-footer">
-        <button class="btn-hud" id="testVoiceBtn">Test Voice</button>
-        <button class="btn-hud primary" id="saveIoBtn">Apply & Save</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Persistent Memory Manager Modal -->
-  <div class="io-modal-backdrop" id="memoryModalBackdrop" role="dialog" aria-modal="true" aria-labelledby="memoryModalTitle">
-    <div class="io-modal-content memory-modal-content">
-      <div class="io-modal-header">
-        <h2 class="io-modal-title" id="memoryModalTitle">Persistent Long-Term Memory (SQLite)</h2>
-        <button class="io-close-btn" id="memoryCloseBtn" aria-label="Close Memory Manager">&times;</button>
-      </div>
-
-      <p style="font-size: 11px; color: var(--text-secondary); margin: 0;">
-        Orion automatically stores user preferences, key instructions, and persistent facts here so it remembers you across sessions and days.
-      </p>
-
-      <div class="memory-input-row">
-        <input type="text" id="newMemoryInput" class="io-select" placeholder="Add a persistent fact (e.g. 'User prefers concise Python code')...">
-        <button class="btn-hud primary" id="addMemoryBtn" style="white-space: nowrap;">Store Fact</button>
-      </div>
-
-      <div class="memory-list-container" id="memoryListContainer">
-        <!-- Dynamic memory items inserted here -->
-      </div>
-
-      <div class="io-modal-footer">
-        <button class="btn-hud" id="refreshMemoryBtn">Refresh</button>
-        <button class="btn-hud primary" id="closeMemoryModalBtn">Close</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- AI Engines & Endpoints Manager Modal -->
-  <div class="io-modal-backdrop" id="endpointModalBackdrop" role="dialog" aria-modal="true" aria-labelledby="endpointModalTitle">
-    <div class="io-modal-content">
-      <div class="io-modal-header">
-        <h2 class="io-modal-title" id="endpointModalTitle">Open Source AI Engines & Endpoints</h2>
-        <button class="io-close-btn" id="endpointCloseBtn" aria-label="Close Engine Manager">&times;</button>
-      </div>
-
-      <p style="font-size: 11px; color: var(--text-secondary); margin: 0;">
-        Integrate any open-source model engine running on your machine (Ollama, LM Studio, llama.cpp, text-gen-webui, vLLM, KoboldCPP).
-      </p>
-
-      <div class="io-form-group">
-        <label class="io-label">Registered Local AI Endpoints</label>
-        <div id="endpointList" class="endpoint-list-container">
-          <!-- Dynamic endpoints listed here -->
-        </div>
-      </div>
-
-      <div class="io-form-group" style="border-top: 1px solid var(--border-subtle); padding-top: 12px;">
-        <label class="io-label">Add Local AI Endpoint</label>
-        <div style="display: flex; gap: 8px; flex-direction: column;">
-          <input type="text" id="endpointNameInput" class="io-select" placeholder="Engine Name (e.g. LM Studio)">
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="endpointUrlInput" class="io-select" placeholder="Base URL (e.g. http://127.0.0.1:1234/v1)" style="flex: 1;">
-            <select id="endpointTypeSelect" class="io-select" style="width: 120px;">
-              <option value="ollama">Ollama</option>
-              <option value="openai">OpenAI/LMStudio</option>
+        <!-- 3. NEURAL CORE & MODELS -->
+        <section class="settings-panel" id="secNeuralCore">
+          <!-- Brain Model Selection & Live Specs -->
+          <div class="io-form-group">
+            <label for="settingsBrainSelect" class="io-label">
+              <span>Select Conversational Brain (LLM)</span>
+              <span id="activeBrainBadge" class="tier-badge MEDIUM">MEDIUM</span>
+            </label>
+            <select id="settingsBrainSelect" class="io-select" aria-label="Select Local LLM Brain">
+              <option value="llama3:latest">llama3:latest [MEDIUM]</option>
+              <option value="qwen2.5-coder:14b">qwen2.5-coder:14b [MEDIUM]</option>
+              <option value="qwen3-coder:30b">qwen3-coder:30b [HIGH]</option>
+              <option value="deepseek-coder:6.7b">deepseek-coder:6.7b [LOW]</option>
             </select>
+
+            <!-- Live Brain Specs Card -->
+            <div class="model-specs-card" id="brainSpecsCard">
+              <div class="model-card-header">
+                <span class="model-card-name" id="brainSpecsName">llama3:latest</span>
+                <div class="model-card-meta">
+                  <span class="tier-badge MEDIUM" id="brainSpecsTier">MEDIUM</span>
+                  <span class="model-footprint" id="brainSpecsRam">⚡ ~4.3 GB RAM</span>
+                </div>
+              </div>
+              <p class="model-card-desc" id="brainSpecsDesc">Meta Llama 3 (8B). High-speed general conversational intelligence with refined reasoning.</p>
+            </div>
           </div>
-          <button class="btn-hud primary" id="addEndpointBtn" style="align-self: flex-end;">Register Endpoint</button>
-        </div>
+
+          <!-- Vision Model Selection & Live Specs -->
+          <div class="io-form-group" style="margin-top: 18px;">
+            <label for="settingsVisionSelect" class="io-label">
+              <span>Select Optical Vision Model</span>
+              <span id="activeVisionBadge" class="tier-badge LOW">LOW</span>
+            </label>
+            <select id="settingsVisionSelect" class="io-select" aria-label="Select Vision Model">
+              <option value="moondream:latest">moondream:latest [LOW]</option>
+              <option value="llava:latest">llava:latest [MEDIUM]</option>
+            </select>
+
+            <!-- Live Vision Specs Card -->
+            <div class="model-specs-card" id="visionSpecsCard">
+              <div class="model-card-header">
+                <span class="model-card-name" id="visionSpecsName">moondream:latest</span>
+                <div class="model-card-meta">
+                  <span class="tier-badge LOW" id="visionSpecsTier">LOW</span>
+                  <span class="model-footprint" id="visionSpecsRam">⚡ ~1.6 GB RAM</span>
+                </div>
+              </div>
+              <p class="model-card-desc" id="visionSpecsDesc">Moondream2 (1.86B). Ultra-fast, lightweight vision model for rapid screen parsing and optical recognition.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. AI ENGINES -->
+        <section class="settings-panel" id="secAiEngines">
+          <p style="font-size: 11px; color: var(--text-secondary); margin: 0 0 12px 0;">
+            Integrate any open-source model engine running on your machine (Ollama, LM Studio, llama.cpp, text-gen-webui, vLLM, KoboldCPP).
+          </p>
+
+          <div class="io-form-group">
+            <label class="io-label">Registered Local AI Endpoints</label>
+            <div id="endpointList" class="endpoint-list-container">
+              <!-- Dynamic endpoints listed here -->
+            </div>
+          </div>
+
+          <div class="io-form-group" style="border-top: 1px solid var(--border-subtle); padding-top: 12px;">
+            <label class="io-label">Add Local AI Endpoint</label>
+            <div style="display: flex; gap: 8px; flex-direction: column;">
+              <input type="text" id="endpointNameInput" class="io-select" placeholder="Engine Name (e.g. LM Studio)">
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="endpointUrlInput" class="io-select" placeholder="Base URL (e.g. http://127.0.0.1:1234/v1)" style="flex: 1;">
+                <select id="endpointTypeSelect" class="io-select" style="width: 120px;">
+                  <option value="ollama">Ollama</option>
+                  <option value="openai">OpenAI/LMStudio</option>
+                </select>
+              </div>
+              <button class="btn-hud primary" id="addEndpointBtn" style="align-self: flex-end;">Register Endpoint</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 5. AUDIO & I/O HARDWARE -->
+        <section class="settings-panel" id="secAudioIo">
+          <div class="io-form-group">
+            <label for="micSelect" class="io-label">
+              <span>Audio Input (Microphone)</span>
+              <span id="micStatusLabel" style="color: var(--emerald-nominal);">Ready</span>
+            </label>
+            <div style="display: flex; gap: 6px;">
+              <select id="micSelect" class="io-select" aria-label="Microphone input device" style="flex: 1;">
+                <option value="default">Default System Microphone</option>
+              </select>
+              <button class="btn-hud" id="scanMicsBtn" title="Scan and unlock all available microphones">Scan Mics</button>
+              <button class="btn-hud" id="toggleMicTestBtn" style="white-space: nowrap;">Test Mic</button>
+            </div>
+
+            <!-- Live VU Meter -->
+            <div class="mic-meter-container" id="micMeterContainer">
+              <div class="mic-meter-header">
+                <span class="meter-label">Live Input Sensitivity</span>
+                <span class="meter-val" id="micLevelText">0%</span>
+              </div>
+              <div class="mic-meter-track">
+                <div class="mic-meter-fill" id="micMeterFill"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Audio Output -->
+          <div class="io-form-group">
+            <label for="speakerSelect" class="io-label">
+              <span>Audio Output (Speakers / Headset)</span>
+              <span id="speakerStatusLabel" style="color: var(--emerald-nominal);">Ready</span>
+            </label>
+            <div style="display: flex; gap: 6px;">
+              <select id="speakerSelect" class="io-select" aria-label="Audio output speaker device" style="flex: 1;">
+                <option value="default">Default System Output</option>
+              </select>
+              <button class="btn-hud" id="testSpeakerBtn" style="white-space: nowrap;">Test Speaker</button>
+            </div>
+          </div>
+
+          <!-- Voice Synthesis -->
+          <div class="io-form-group">
+            <label for="voiceSelect" class="io-label">
+              <span>Voice Output (Speech Synthesis)</span>
+              <span id="voiceCountLabel">-- voices</span>
+            </label>
+            <div style="display: flex; gap: 6px;">
+              <select id="voiceCategorySelect" class="io-select" style="width: 140px;" aria-label="Filter Voice Categories">
+                <option value="natural" selected>Natural / Neural</option>
+                <option value="en-gb">British English</option>
+                <option value="en-us">US English</option>
+                <option value="all">All Voices</option>
+              </select>
+              <select id="voiceSelect" class="io-select" style="flex: 1;" aria-label="Speech synthesis voice">
+                <option value="default">System Default Voice</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="io-form-group">
+            <label for="voiceVolumeSlider" class="io-label">
+              <span>Orion Voice Volume</span>
+              <span id="voiceVolumeVal">100%</span>
+            </label>
+            <div class="io-slider-wrapper">
+              <input type="range" id="voiceVolumeSlider" class="io-slider" min="0" max="100" step="5" value="100">
+            </div>
+          </div>
+
+          <div class="io-form-group">
+            <label for="voiceRateSlider" class="io-label">
+              <span>Voice Cadence (Speed)</span>
+              <span id="voiceRateVal">1.05x</span>
+            </label>
+            <div class="io-slider-wrapper">
+              <input type="range" id="voiceRateSlider" class="io-slider" min="0.7" max="1.4" step="0.05" value="1.05">
+            </div>
+          </div>
+
+          <div class="io-form-group">
+            <label for="voicePitchSlider" class="io-label">
+              <span>Voice Pitch (Tone)</span>
+              <span id="voicePitchVal">0.95x</span>
+            </label>
+            <div class="io-slider-wrapper">
+              <input type="range" id="voicePitchSlider" class="io-slider" min="0.7" max="1.3" step="0.05" value="0.95">
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 10px;">
+            <button class="btn-hud" id="testVoiceBtn">Test Voice</button>
+            <button class="btn-hud primary" id="saveIoBtn">Apply & Save I/O</button>
+          </div>
+        </section>
       </div>
 
-      <div class="io-modal-footer">
-        <button class="btn-hud primary" id="closeEndpointModalBtn">Close</button>
+      <div class="io-modal-footer" style="margin-top: 18px;">
+        <button class="btn-hud primary" id="closeSettingsModalBtn">Close Settings</button>
       </div>
     </div>
   </div>

@@ -257,6 +257,28 @@ def compute_resource_tier(size_bytes: int = 0, name: str = "") -> str:
     else:
         return "LOW"
 
+MODEL_DESCRIPTIONS = {
+    "llama3:latest": "Meta Llama 3 (8B). High-speed general conversational intelligence with refined reasoning.",
+    "llama3:8b": "Meta Llama 3 (8B). High-speed general conversational intelligence with refined reasoning.",
+    "qwen2.5-coder:14b": "Alibaba Qwen 2.5 Coder (14B). Elite code generation, multi-file refactoring, and complex logic.",
+    "qwen3-coder:30b": "Alibaba Qwen 3 Coder (30B MoE). Heavyweight frontier programming intelligence for deep software engineering.",
+    "deepseek-coder:6.7b": "DeepSeek Coder (6.7B). Ultra-fast, lightweight programming model optimized for quick code assistance.",
+    "moondream:latest": "Moondream2 (1.86B). Ultra-fast, lightweight vision model for rapid screen parsing and optical recognition.",
+    "llava:latest": "LLaVA 1.5 (7B). High-precision multimodal vision analysis for complex screen and camera captures."
+}
+
+def get_model_description(name: str) -> str:
+    """Return an articulate tactical description for a local model."""
+    name_lower = name.lower()
+    for k, v in MODEL_DESCRIPTIONS.items():
+        if k in name_lower or name_lower in k:
+            return v
+    if "coder" in name_lower:
+        return "Specialized programming and syntax intelligence model."
+    if any(v in name_lower for v in ["vision", "llava", "moondream", "vl"]):
+        return "Multimodal visual recognition model for screen and optical sensor parsing."
+    return "Local neural inference model operating directly on workstation hardware."
+
 async def discover_local_models():
     """Scan all active endpoints (Ollama, LM Studio, llama.cpp, etc.) for models."""
     models = []
@@ -289,11 +311,13 @@ async def discover_local_models():
                             name = m.get("name", "")
                             size = m.get("size", 0)
                             tier = compute_resource_tier(size, name)
+                            desc = get_model_description(name)
                             model_entry = {
                                 "name": name,
                                 "size": size,
                                 "size_gb": round(size / (1024 ** 3), 1) if size else None,
                                 "resource_tier": tier,
+                                "description": desc,
                                 "label": f"{name} [{tier}]",
                                 "endpoint": base_url,
                                 "type": "ollama"
@@ -312,11 +336,13 @@ async def discover_local_models():
                         for m in data.get("data", []):
                             name = m.get("id", "")
                             tier = compute_resource_tier(0, name)
+                            desc = get_model_description(name)
                             model_entry = {
                                 "name": name,
                                 "size": 0,
                                 "size_gb": None,
                                 "resource_tier": tier,
+                                "description": desc,
                                 "label": f"{name} [{tier}]",
                                 "endpoint": base_url,
                                 "type": "openai"
