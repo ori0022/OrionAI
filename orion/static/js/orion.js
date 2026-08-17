@@ -8,6 +8,20 @@
 
   const DEFAULT_MODELS_FULL = [
     {
+      name: 'llama3.2:3b',
+      size_gb: 2.0,
+      resource_tier: 'LOW',
+      description: 'Meta Llama 3.2 (3B). Ultra-fast next-gen lightweight brain. Generates at 70+ tokens/sec with sub-second responses.',
+      type: 'ollama'
+    },
+    {
+      name: 'qwen2.5:3b',
+      size_gb: 1.9,
+      resource_tier: 'LOW',
+      description: 'Alibaba Qwen 2.5 (3B). Lightning-fast reasoning and general intelligence with exceptional accuracy.',
+      type: 'ollama'
+    },
+    {
       name: 'llama3:latest',
       size_gb: 4.3,
       resource_tier: 'MEDIUM',
@@ -96,6 +110,11 @@
     currentSessionId: 'default',
     leftCollapsed: false,
     rightCollapsed: false,
+    currentLanguage: 'en', // 'en' or 'he'
+    spacebarMode: 'toggle', // 'toggle' (default) or 'hold'
+    lastInputSource: 'text', // 'text', 'voice', or 'chip'
+    continuousConversation: false,
+    silenceThresholdMs: 700,
     latencyMs: 0
   };
 
@@ -106,6 +125,7 @@
     els.statusText = document.getElementById('statusText');
     els.modelSelect = document.getElementById('modelSelect');
     els.visionModelSelect = document.getElementById('visionModelSelect');
+    els.languageSelect = document.getElementById('languageSelect');
     els.systemUptime = document.getElementById('systemUptime');
     els.systemLatency = document.getElementById('systemLatency');
     els.engineNameVal = document.getElementById('engineNameVal');
@@ -153,6 +173,7 @@
     els.hudSessionsWing = document.getElementById('hudSessionsWing');
     els.sessionsList = document.getElementById('sessionsList');
     els.newSessionBtn = document.getElementById('newSessionBtn');
+    els.sessionSearchInput = document.getElementById('sessionSearchInput');
 
     // Hardware I/O Modal
     els.ioConfigBtn = document.getElementById('ioConfigBtn');
@@ -178,6 +199,12 @@
     els.voicePitchSlider = document.getElementById('voicePitchSlider');
     els.voicePitchVal = document.getElementById('voicePitchVal');
     els.testVoiceBtn = document.getElementById('testVoiceBtn');
+    els.voiceRadarBar = document.getElementById('voiceRadarBar');
+    els.voiceRadarText = document.getElementById('voiceRadarText');
+    els.voiceDiagBox = document.getElementById('voiceDiagBox');
+    els.voiceDiagStatus = document.getElementById('voiceDiagStatus');
+    els.voiceDiagTranscript = document.getElementById('voiceDiagTranscript');
+    els.testVoiceInputBtn = document.getElementById('testVoiceInputBtn');
 
     // Memory Modal
     els.memoryModalBtn = document.getElementById('memoryModalBtn');
@@ -221,6 +248,7 @@
     els.speechToggleSettings = document.getElementById('speechToggleSettings');
     els.muteToggleSettings = document.getElementById('muteToggleSettings');
     els.purgeRamSettingsBtn = document.getElementById('purgeRamSettingsBtn');
+    els.spacebarModeSelect = document.getElementById('spacebarModeSelect');
   }
 
   // ==========================================================================
@@ -240,43 +268,17 @@
   }
 
   function playTone(freqs, duration = 0.08, type = 'sine') {
-    if (state.audioMuted || !state.audioCtx) return;
-    if (state.audioCtx.state === 'suspended') {
-      state.audioCtx.resume();
-    }
-    const now = state.audioCtx.currentTime;
-    const osc = state.audioCtx.createOscillator();
-    const gain = state.audioCtx.createGain();
-
-    osc.type = type;
-    if (Array.isArray(freqs)) {
-      osc.frequency.setValueAtTime(freqs[0], now);
-      freqs.forEach((f, idx) => {
-        osc.frequency.exponentialRampToValueAtTime(f, now + (duration * (idx + 1)) / freqs.length);
-      });
-    } else {
-      osc.frequency.setValueAtTime(freqs, now);
-    }
-
-    const peakVol = 0.08 * (state.voiceVolume !== undefined ? state.voiceVolume : 1.0);
-    gain.gain.setValueAtTime(0.005, now);
-    gain.gain.linearRampToValueAtTime(peakVol, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-    osc.connect(gain);
-    gain.connect(state.audioCtx.destination);
-
-    osc.start(now);
-    osc.stop(now + duration);
+    // Disabled synthetic oscillator tones to keep keyboard typing and voice activation clean & silent
+    return;
   }
 
   const sfx = {
-    activate: () => playTone([520, 880], 0.12, 'sine'),
-    listening: () => playTone([660, 440], 0.08, 'triangle'),
-    processing: () => playTone([440, 550, 660], 0.14, 'sine'),
-    ready: () => playTone([523, 659, 784], 0.16, 'sine'),
-    snap: () => playTone([900, 300], 0.1, 'sawtooth'),
-    click: () => playTone(1200, 0.02, 'triangle')
+    activate: () => {},
+    listening: () => {},
+    processing: () => {},
+    ready: () => {},
+    snap: () => {},
+    click: () => {}
   };
 
   // ==========================================================================
@@ -437,38 +439,159 @@
   // 3. SPEECH-TO-SPEECH & AUDIO ENGINE
   // ==========================================================================
 
+  let pendingVoiceTranscript = '';
+  let currentInterimTranscript = '';
+  let vadSilenceTimer = null;
+
+  function updateVoiceHearingBadge(text, isActive = true) {
+    if (els.voiceRadarBar) {
+      if (isActive) {
+        els.voiceRadarBar.style.display = 'flex';
+        if (els.voiceRadarText) {
+          els.voiceRadarText.textContent = text || (state.currentLanguage === 'he' ? 'מקשיב...' : 'Listening...');
+        }
+      } else {
+        els.voiceRadarBar.style.display = 'none';
+      }
+    }
+
+    if (els.acousticBar) {
+      if (isActive && text) {
+        els.acousticBar.innerHTML = `<span style="color: var(--ice-blue); font-weight: 700;">HEARING:</span> <span style="color: #ffffff;">"${text}"</span>`;
+      } else if (isActive) {
+        els.acousticBar.innerHTML = `<span style="color: var(--emerald-nominal); font-weight: 700;">LISTENING</span> <span class="hotkey-hint">| Speak now (${state.currentLanguage === 'he' ? 'עברית' : 'English'})</span>`;
+      } else {
+        els.acousticBar.innerHTML = `<span>Click Core or hold <kbd>Space</kbd> to transmit</span><span class="hotkey-hint">| Natural Voice Pipeline Active</span>`;
+      }
+    }
+
+    if (els.voiceDiagTranscript) {
+      if (text) {
+        els.voiceDiagTranscript.textContent = text;
+      }
+    }
+    if (els.voiceDiagStatus) {
+      els.voiceDiagStatus.textContent = isActive ? 'LISTENING' : 'IDLE';
+      els.voiceDiagStatus.style.color = isActive ? 'var(--ice-blue)' : 'var(--emerald-nominal)';
+    }
+  }
+
   function initSpeechEngine() {
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRec) {
       state.speechRecognition = new SpeechRec();
-      state.speechRecognition.continuous = false;
+      state.speechRecognition.continuous = true;
       state.speechRecognition.interimResults = true;
-      state.speechRecognition.lang = 'en-US';
+      state.speechRecognition.lang = state.currentLanguage === 'he' ? 'he-IL' : 'en-US';
 
       state.speechRecognition.onstart = () => {
+        state.isListening = true;
         setInteractionState('listening');
         sfx.listening();
+        updateVoiceHearingBadge('', true);
       };
 
       state.speechRecognition.onresult = (event) => {
-        let transcript = '';
+        // Instant Barge-In: If Orion is speaking, interrupt immediately
+        if (state.isSpeaking || isSpeakingQueue) {
+          cancelSpeech();
+          setInteractionState('listening');
+        }
+
+        // Only display interim preview if matching the selected language
+        let interim = '';
+        let finalChunk = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
+          const item = event.results[i];
+          if (item.isFinal) {
+            finalChunk += item[0].transcript;
+          } else {
+            interim += item[0].transcript;
+          }
         }
-        if (els.chatInput) els.chatInput.value = transcript;
-        if (event.results[0].isFinal) {
-          sendUserMessage(transcript);
+
+        if (state.currentLanguage === 'he') {
+          // If Hebrew is active, only show Hebrew characters to prevent English hallucinations
+          const hasHebrew = anyHebrewChar(finalChunk) || anyHebrewChar(interim);
+          if (hasHebrew) {
+            if (finalChunk) pendingVoiceTranscript = (pendingVoiceTranscript + ' ' + finalChunk).trim();
+            currentInterimTranscript = interim.trim();
+            const display = (pendingVoiceTranscript + (currentInterimTranscript ? ' ' + currentInterimTranscript : '')).trim();
+            updateVoiceHearingBadge(display, true);
+          }
+        } else {
+          if (finalChunk) pendingVoiceTranscript = (pendingVoiceTranscript + ' ' + finalChunk).trim();
+          currentInterimTranscript = interim.trim();
+          const display = (pendingVoiceTranscript + (currentInterimTranscript ? ' ' + currentInterimTranscript : '')).trim();
+          updateVoiceHearingBadge(display, true);
         }
+
+        // VAD Silence Detection Timer: Triggers local Whisper transcription when user pauses
+        if (vadSilenceTimer) clearTimeout(vadSilenceTimer);
+        vadSilenceTimer = setTimeout(() => {
+          if (state.isListening) {
+            finishAndDispatchVoice();
+          }
+        }, state.silenceThresholdMs || 750);
       };
 
       state.speechRecognition.onerror = (err) => {
-        console.warn('Speech Recognition error:', err);
-        setInteractionState('idle');
+        if (vadSilenceTimer) {
+          clearTimeout(vadSilenceTimer);
+          vadSilenceTimer = null;
+        }
+        console.warn('Speech Recognition error event:', err.error);
+        if (err.error === 'no-speech' || err.error === 'aborted') {
+          // Normal silence / timeout in continuous mode; do not kill listening state
+          return;
+        }
+        if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
+          state.isListening = false;
+          setInteractionState('idle');
+          updateVoiceHearingBadge('', false);
+          appendTranscript('assistant', '⚠️ Microphone access was blocked by your browser. Please click the permissions/lock icon in your browser address bar and allow microphone access.');
+        }
       };
 
       state.speechRecognition.onend = () => {
+        if (vadSilenceTimer) {
+          clearTimeout(vadSilenceTimer);
+          vadSilenceTimer = null;
+        }
+        const toSend = (pendingVoiceTranscript + ' ' + currentInterimTranscript).trim();
+        if (toSend && !state.isProcessing && state.isListening) {
+          pendingVoiceTranscript = '';
+          currentInterimTranscript = '';
+          if (els.chatInput && document.activeElement !== els.chatInput) els.chatInput.value = '';
+          stopListening();
+          sendUserMessage(toSend, 'voice');
+          return;
+        }
+
+        // If user is STILL in listening mode (toggle or hold active), keep recognition running with slight delay for browser pipeline reset
+        if (state.isListening && !state.isProcessing && !state.isSpeaking) {
+          setTimeout(() => {
+            if (state.isListening && !state.isProcessing && !state.isSpeaking && state.speechRecognition) {
+              try {
+                state.speechRecognition.start();
+              } catch (e) {
+                // If browser state is stuck, recreate
+                try {
+                  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+                  if (SpeechRec) {
+                    initSpeechEngine();
+                    if (state.isListening) state.speechRecognition.start();
+                  }
+                } catch (err2) {}
+              }
+            }
+          }, 80);
+          return;
+        }
+
         if (!state.isProcessing && !state.isSpeaking) {
           setInteractionState('idle');
+          updateVoiceHearingBadge('', false);
         }
       };
     }
@@ -483,14 +606,22 @@
         loadSettings(); // Restore saved voice & hardware settings
 
         if (!state.selectedVoice && state.availableVoices.length > 0) {
-          state.selectedVoice = state.availableVoices.find(v => 
-            v.name.includes('Ryan') || 
-            v.name.includes('Natural') ||
-            v.name.includes('Guy') ||
-            v.name.includes('Daniel') || 
-            v.name.includes('UK English Male') || 
-            (v.lang.startsWith('en-GB') && v.name.toLowerCase().includes('male'))
-          ) || state.availableVoices.find(v => v.lang.startsWith('en-GB')) || state.availableVoices.find(v => v.lang.startsWith('en')) || state.availableVoices[0];
+          if (state.currentLanguage === 'he') {
+            state.selectedVoice = state.availableVoices.find(v => {
+              const l = (v.lang || '').toLowerCase();
+              const n = (v.name || '').toLowerCase();
+              return l.startsWith('he') || l.startsWith('iw') || n.includes('hebrew') || n.includes('asaf') || n.includes('hila') || n.includes('avri') || n.includes('carmit');
+            }) || state.availableVoices[0];
+          } else {
+            state.selectedVoice = state.availableVoices.find(v => 
+              v.name.includes('Ryan') || 
+              v.name.includes('Natural') ||
+              v.name.includes('Guy') ||
+              v.name.includes('Daniel') || 
+              v.name.includes('UK English Male') || 
+              (v.lang.startsWith('en-GB') && v.name.toLowerCase().includes('male'))
+            ) || state.availableVoices.find(v => v.lang.startsWith('en-GB')) || state.availableVoices.find(v => v.lang.startsWith('en')) || state.availableVoices[0];
+          }
         }
         populateVoiceSelect();
       };
@@ -499,7 +630,21 @@
     }
   }
 
+  const NEURAL_TTS_VOICES = [
+    { name: 'Avri Neural (Hebrew Male)', id: 'he-IL-AvriNeural', lang: 'he-IL', category: 'hebrew', isNeural: true },
+    { name: 'Hila Neural (Hebrew Female)', id: 'he-IL-HilaNeural', lang: 'he-IL', category: 'hebrew', isNeural: true },
+    { name: 'Ryan Neural (British Jarvis)', id: 'en-GB-RyanNeural', lang: 'en-GB', category: 'en-gb', isNeural: true },
+    { name: 'Sonia Neural (British Female)', id: 'en-GB-SoniaNeural', lang: 'en-GB', category: 'en-gb', isNeural: true },
+    { name: 'Guy Neural (US Male)', id: 'en-US-GuyNeural', lang: 'en-US', category: 'en-us', isNeural: true },
+    { name: 'Jenny Neural (US Female)', id: 'en-US-JennyNeural', lang: 'en-US', category: 'en-us', isNeural: true }
+  ];
+
+  function anyHebrewChar(str) {
+    return /[\u0590-\u05FF]/.test(str || '');
+  }
+
   function isHumanOrNeuralVoice(v) {
+    if (v.isNeural) return true;
     const n = (v.name || '').toLowerCase();
     return n.includes('natural') || 
            n.includes('neural') || 
@@ -516,29 +661,53 @@
   }
 
   function populateVoiceSelect() {
-    if (!els.voiceSelect || !state.availableVoices || state.availableVoices.length === 0) return;
+    if (!els.voiceSelect) return;
     els.voiceSelect.innerHTML = '';
 
-    const cat = state.voiceCategory || 'natural';
-    let filtered = state.availableVoices;
+    const cat = state.voiceCategory || (state.currentLanguage === 'he' ? 'hebrew' : 'natural');
+    let list = [];
 
-    if (cat === 'natural') {
-      filtered = state.availableVoices.filter(v => isHumanOrNeuralVoice(v) || v.lang.startsWith('en'));
-      if (filtered.length === 0) filtered = state.availableVoices;
+    if (cat === 'hebrew') {
+      list = NEURAL_TTS_VOICES.filter(v => v.category === 'hebrew');
+      if (state.availableVoices && state.availableVoices.length > 0) {
+        const sysHeb = state.availableVoices.filter(v => {
+          const l = (v.lang || '').toLowerCase();
+          const n = (v.name || '').toLowerCase();
+          return l.startsWith('he') || l.startsWith('iw') || n.includes('hebrew') || n.includes('asaf') || n.includes('hila') || n.includes('avri') || n.includes('carmit') || n.includes('עברית');
+        });
+        list = list.concat(sysHeb);
+      }
+    } else if (cat === 'natural') {
+      list = NEURAL_TTS_VOICES.filter(v => v.category === 'en-gb' || v.category === 'en-us');
+      if (state.availableVoices && state.availableVoices.length > 0) {
+        const sysNat = state.availableVoices.filter(v => isHumanOrNeuralVoice(v) || v.lang.startsWith('en'));
+        list = list.concat(sysNat);
+      }
     } else if (cat === 'en-gb') {
-      filtered = state.availableVoices.filter(v => v.lang.toLowerCase().includes('en-gb'));
-      if (filtered.length === 0) filtered = state.availableVoices;
+      list = NEURAL_TTS_VOICES.filter(v => v.category === 'en-gb');
+      if (state.availableVoices && state.availableVoices.length > 0) {
+        const sysGb = state.availableVoices.filter(v => v.lang.toLowerCase().includes('en-gb'));
+        list = list.concat(sysGb);
+      }
     } else if (cat === 'en-us') {
-      filtered = state.availableVoices.filter(v => v.lang.toLowerCase().includes('en-us'));
-      if (filtered.length === 0) filtered = state.availableVoices;
+      list = NEURAL_TTS_VOICES.filter(v => v.category === 'en-us');
+      if (state.availableVoices && state.availableVoices.length > 0) {
+        const sysUs = state.availableVoices.filter(v => v.lang.toLowerCase().includes('en-us'));
+        list = list.concat(sysUs);
+      }
+    } else {
+      list = [...NEURAL_TTS_VOICES];
+      if (state.availableVoices && state.availableVoices.length > 0) {
+        list = list.concat(state.availableVoices);
+      }
     }
 
-    filtered.forEach((v) => {
+    list.forEach((v) => {
       const opt = document.createElement('option');
       opt.value = v.name;
-      const isNeural = isHumanOrNeuralVoice(v);
+      const isNeural = v.isNeural || isHumanOrNeuralVoice(v);
       opt.textContent = `${isNeural ? '✨ ' : ''}${v.name} (${v.lang})${v.default ? ' [Default]' : ''}`;
-      if (state.selectedVoice && v.name === state.selectedVoice.name) {
+      if (state.selectedVoice && (v.name === state.selectedVoice.name || (v.id && v.id === state.selectedVoice.id))) {
         opt.selected = true;
       }
       els.voiceSelect.appendChild(opt);
@@ -547,7 +716,10 @@
     if (els.voiceSelect.selectedIndex === -1 && els.voiceSelect.children.length > 0) {
       els.voiceSelect.selectedIndex = 0;
       const firstVoiceName = els.voiceSelect.value;
-      state.selectedVoice = state.availableVoices.find(v => v.name === firstVoiceName);
+      state.selectedVoice = list.find(v => v.name === firstVoiceName) || list[0];
+    } else if (els.voiceSelect.value) {
+      const curVoiceName = els.voiceSelect.value;
+      state.selectedVoice = list.find(v => v.name === curVoiceName) || list[0];
     }
   }
 
@@ -663,12 +835,14 @@
       speakerId: state.selectedSpeakerId,
       voiceName: state.selectedVoice ? state.selectedVoice.name : '',
       voiceCategory: state.voiceCategory,
+      language: state.currentLanguage,
       voiceRate: state.voiceRate,
       voicePitch: state.voicePitch,
       voiceVolume: state.voiceVolume,
       autoSpeak: state.autoSpeak,
       audioMuted: state.audioMuted,
       streamFps: state.streamFps,
+      spacebarMode: state.spacebarMode,
       leftCollapsed: state.leftCollapsed,
       rightCollapsed: state.rightCollapsed
     };
@@ -692,6 +866,10 @@
         state.activeVisionModel = s.activeVisionModel;
         if (els.visionModelSelect) els.visionModelSelect.value = s.activeVisionModel;
       }
+      if (s.language) {
+        state.currentLanguage = s.language;
+        if (els.languageSelect) els.languageSelect.value = s.language;
+      }
       if (s.micId) state.selectedMicId = s.micId;
       if (s.speakerId) {
         state.selectedSpeakerId = s.speakerId;
@@ -704,6 +882,14 @@
       if (s.autoSpeak !== undefined) state.autoSpeak = Boolean(s.autoSpeak);
       if (s.audioMuted !== undefined) state.audioMuted = Boolean(s.audioMuted);
       if (s.streamFps !== undefined) state.streamFps = parseFloat(s.streamFps);
+      if (s.spacebarMode) {
+        state.spacebarMode = s.spacebarMode;
+      } else {
+        state.spacebarMode = 'toggle';
+      }
+      if (els.spacebarModeSelect) {
+        els.spacebarModeSelect.value = state.spacebarMode;
+      }
       if (s.leftCollapsed !== undefined) {
         state.leftCollapsed = Boolean(s.leftCollapsed);
         if (els.hudMain) els.hudMain.classList.toggle('left-collapsed', state.leftCollapsed);
@@ -734,6 +920,9 @@
       }
       if (els.voiceCategorySelect) {
         els.voiceCategorySelect.value = state.voiceCategory;
+      }
+      if (els.spacebarModeSelect) {
+        els.spacebarModeSelect.value = state.spacebarMode;
       }
       if (els.speechToggle) {
         els.speechToggle.textContent = state.autoSpeak ? 'VOICE: ON' : 'VOICE: OFF';
@@ -793,70 +982,454 @@
     setTimeout(() => resizeCanvas(), 360);
   }
 
+  let userAudioStream = null;
+  let mediaRecorder = null;
+  let recordedAudioChunks = [];
+  let vadCheckTimer = null;
+  let lastAudioActivity = 0;
+  let vadSpeakingDetected = false;
+
+  async function getActiveAudioStream() {
+    if (userAudioStream && userAudioStream.active) {
+      return userAudioStream;
+    }
+    try {
+      const constraints = {
+        audio: state.selectedMicId && state.selectedMicId !== 'default'
+          ? { deviceId: { exact: state.selectedMicId } }
+          : true
+      };
+      userAudioStream = await navigator.mediaDevices.getUserMedia(constraints);
+      return userAudioStream;
+    } catch (e) {
+      console.warn('getUserMedia audio stream error:', e);
+      return null;
+    }
+  }
+
+  async function sendLocalAudioForTranscription(audioBlob) {
+    if (!audioBlob || audioBlob.size < 1200) {
+      return null;
+    }
+    try {
+      updateVoiceHearingBadge('⚡ Transcribing locally with Whisper...', true);
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'mic.webm');
+      formData.append('language', state.currentLanguage || 'en');
+
+      const res = await fetch('/api/stt', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        throw new Error('STT HTTP ' + res.status);
+      }
+      const data = await res.json();
+      return (data.text || '').trim();
+    } catch (err) {
+      console.warn('Local Whisper STT error:', err);
+      return null;
+    }
+  }
+
+  async function startListening() {
+    initAudioContext();
+    if (state.isSpeaking || isSpeakingQueue) {
+      cancelSpeech();
+    }
+    if (vadSilenceTimer) {
+      clearTimeout(vadSilenceTimer);
+      vadSilenceTimer = null;
+    }
+    if (vadCheckTimer) {
+      clearInterval(vadCheckTimer);
+      vadCheckTimer = null;
+    }
+
+    pendingVoiceTranscript = '';
+    currentInterimTranscript = '';
+    state.isListening = true;
+    setInteractionState('listening');
+    updateVoiceHearingBadge('', true);
+    sfx.listening();
+
+    // 1. Start browser speech recognition if available (for real-time interim preview)
+    if (state.speechRecognition) {
+      try {
+        state.speechRecognition.lang = state.currentLanguage === 'he' ? 'he-IL' : 'en-US';
+        state.speechRecognition.start();
+      } catch (e) {}
+    }
+
+    // 2. Start local MediaRecorder audio capture on user's verified working microphone
+    try {
+      const stream = await getActiveAudioStream();
+      if (stream) {
+        recordedAudioChunks = [];
+        const recorderOptions = { audioBitsPerSecond: 128000 };
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          recorderOptions.mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          recorderOptions.mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+          recorderOptions.mimeType = 'audio/ogg';
+        }
+
+        mediaRecorder = new MediaRecorder(stream, recorderOptions);
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            recordedAudioChunks.push(e.data);
+          }
+        };
+        mediaRecorder.start(100);
+
+        // Connect stream to analyser for real-time sound activity detection
+        if (state.audioCtx) {
+          if (state.audioCtx.state === 'suspended') await state.audioCtx.resume();
+          if (!state.micSourceNode) {
+            state.micSourceNode = state.audioCtx.createMediaStreamSource(stream);
+            state.micSourceNode.connect(state.analyserNode);
+          }
+        }
+
+        vadSpeakingDetected = false;
+        lastAudioActivity = Date.now();
+
+        // Real-time Audio VAD monitor
+        const dataArray = new Uint8Array(state.analyserNode.frequencyBinCount);
+        vadCheckTimer = setInterval(() => {
+          if (!state.isListening) return;
+          state.analyserNode.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+          const avg = sum / dataArray.length;
+          const pct = Math.min(100, Math.round((avg / 128) * 100));
+
+          if (pct > 3) {
+            vadSpeakingDetected = true;
+            lastAudioActivity = Date.now();
+          }
+
+          // If user spoke and then fell silent for 700ms, auto-dispatch briskly
+          if (state.spacebarMode === 'toggle' && vadSpeakingDetected && (Date.now() - lastAudioActivity > (state.silenceThresholdMs || 700))) {
+            clearInterval(vadCheckTimer);
+            vadCheckTimer = null;
+            finishAndDispatchVoice();
+          }
+        }, 80);
+      }
+    } catch (e) {
+      console.warn('MediaRecorder audio capture exception:', e);
+    }
+  }
+
+  async function stopListening() {
+    state.isListening = false;
+    if (vadSilenceTimer) {
+      clearTimeout(vadSilenceTimer);
+      vadSilenceTimer = null;
+    }
+    if (vadCheckTimer) {
+      clearInterval(vadCheckTimer);
+      vadCheckTimer = null;
+    }
+    if (state.speechRecognition) {
+      try { state.speechRecognition.stop(); } catch (e) {}
+    }
+    setInteractionState('idle');
+  }
+
+  let conversationalSleepTimer = null;
+
+  function isExitPhrase(text) {
+    if (!text) return false;
+    const lower = text.toLowerCase().trim();
+    const exitWords = [
+      'bye', 'goodbye', 'stop', 'standby', 'sleep', 'shut up', 'cancel', 'exit', 'quit',
+      'להתראות', 'ביי', 'תודה ביי', 'שתוק', 'עצור', 'לישון', 'מספיק', 'צא'
+    ];
+    return exitWords.some(w => lower.includes(w));
+  }
+
+  function checkConversationalTurnArm() {
+    if (state.continuousConversation && state.autoSpeak && !state.isProcessing && !isSpeakingQueue && speechQueue.length === 0) {
+      if (document.activeElement === els.chatInput || isEditableElement(document.activeElement)) {
+        return;
+      }
+      setTimeout(() => {
+        if (!state.isProcessing && !state.isSpeaking && !state.isListening && state.continuousConversation) {
+          startListening();
+          if (conversationalSleepTimer) clearTimeout(conversationalSleepTimer);
+          conversationalSleepTimer = setTimeout(() => {
+            if (state.isListening && !vadSpeakingDetected) {
+              state.continuousConversation = false;
+              stopListening();
+              updateVoiceHearingBadge('', false);
+            }
+          }, 12000);
+        }
+      }, 140);
+    }
+  }
+
+  async function finishAndDispatchVoice() {
+    pendingVoiceTranscript = '';
+    currentInterimTranscript = '';
+
+    await stopListening();
+
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(recordedAudioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+        recordedAudioChunks = [];
+
+        // 100% Local Whisper Neural Transcription (Authoritative & Offline)
+        const finalText = await sendLocalAudioForTranscription(audioBlob);
+
+        if (finalText && finalText.trim().length > 0 && !state.isProcessing) {
+          if (isExitPhrase(finalText)) {
+            state.continuousConversation = false;
+          } else {
+            state.continuousConversation = true;
+          }
+          updateVoiceHearingBadge(finalText, true);
+          if (els.chatInput && document.activeElement !== els.chatInput) els.chatInput.value = '';
+          sendUserMessage(finalText.trim(), 'voice');
+        } else {
+          updateVoiceHearingBadge('', false);
+          if (state.continuousConversation) {
+            checkConversationalTurnArm();
+          }
+        }
+      };
+      try { mediaRecorder.stop(); } catch (e) {}
+    } else {
+      updateVoiceHearingBadge('', false);
+      if (state.continuousConversation) {
+        checkConversationalTurnArm();
+      }
+    }
+  }
+
   function toggleListening() {
     initAudioContext();
     if (state.isListening) {
-      stopListening();
+      finishAndDispatchVoice();
     } else {
       startListening();
     }
   }
 
-  function startListening() {
-    if (!state.speechRecognition) {
-      alert('Speech Recognition is not available in this browser. Please use Chrome or Edge.');
-      return;
+  function extractReadySpeechChunk(buffer) {
+    if (!buffer || buffer.trim().length < 3) return null;
+    const match = buffer.match(/^([\s\S]*?[.!?:\n])([\s\S]*)$/);
+    if (match && match[1].trim().length >= 2) {
+      return { chunk: match[1].trim(), remainder: match[2] || '' };
+    }
+    if (buffer.length > 45) {
+      const clauseMatch = buffer.match(/^([\s\S]*?[,;—\u05BE])([\s\S]*)$/);
+      if (clauseMatch && clauseMatch[1].trim().length >= 8) {
+        return { chunk: clauseMatch[1].trim(), remainder: clauseMatch[2] || '' };
+      }
+    }
+    return null;
+  }
+
+  let speechQueue = [];
+  let isSpeakingQueue = false;
+  let currentAudioSource = null;
+  let currentAudioEl = null;
+
+  function cancelSpeech() {
+    speechQueue = [];
+    isSpeakingQueue = false;
+    if (currentAudioSource) {
+      try { currentAudioSource.stop(); } catch (e) {}
+      currentAudioSource = null;
+    }
+    if (currentAudioEl) {
+      try {
+        currentAudioEl.pause();
+        currentAudioEl.src = '';
+      } catch (e) {}
+      currentAudioEl = null;
+    }
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
     }
     if (state.isSpeaking) {
-      window.speechSynthesis.cancel();
-      state.isSpeaking = false;
-    }
-    try {
-      state.speechRecognition.start();
-    } catch (e) {
-      console.warn('Recognition start exception', e);
+      setInteractionState('idle');
     }
   }
 
-  function stopListening() {
-    if (state.speechRecognition && state.isListening) {
-      state.speechRecognition.stop();
+  async function prefetchAudioChunk(item) {
+    if (!item || item.audioBuffer || item.isFetching) return;
+    item.isFetching = true;
+    const text = item.text;
+    const hasHebrew = anyHebrewChar(text) || state.currentLanguage === 'he';
+    const isNeuralEdge = (state.selectedVoice && state.selectedVoice.isNeural) || hasHebrew;
+
+    if (isNeuralEdge) {
+      try {
+        const voiceId = (state.selectedVoice && state.selectedVoice.id)
+          ? state.selectedVoice.id
+          : (hasHebrew ? 'he-IL-AvriNeural' : 'en-GB-RyanNeural');
+
+        const res = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: text,
+            voice: voiceId,
+            language: state.currentLanguage,
+            rate: state.voiceRate,
+            pitch: state.voicePitch
+          })
+        });
+
+        if (res.ok) {
+          const arrayBuf = await res.arrayBuffer();
+          initAudioContext();
+          if (state.audioCtx) {
+            item.audioBuffer = await state.audioCtx.decodeAudioData(arrayBuf);
+          }
+        }
+      } catch (e) {
+        console.warn('TTS prefetch note:', e);
+      }
     }
-    setInteractionState('idle');
+    item.isFetching = false;
+  }
+
+  function queueSpeechChunk(text) {
+    if (!state.autoSpeak) return;
+    const clean = text
+      .replace(/[*#`_~]/g, '')
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/•/g, '')
+      .trim();
+    if (!clean || clean.length < 2) return;
+
+    const item = { text: clean, audioBuffer: null, isFetching: false };
+    speechQueue.push(item);
+    // Pre-fetch immediately in background for zero-gap playback
+    prefetchAudioChunk(item);
+    processSpeechQueue();
+  }
+
+  async function processSpeechQueue() {
+    if (isSpeakingQueue || speechQueue.length === 0) return;
+    if (!state.autoSpeak) return;
+
+    const nextItem = speechQueue.shift();
+    if (!nextItem) return;
+
+    // Trigger pre-fetching for next items in queue
+    if (speechQueue.length > 0) {
+      prefetchAudioChunk(speechQueue[0]);
+    }
+
+    isSpeakingQueue = true;
+    setInteractionState('speaking');
+
+    // If not yet pre-fetched, wait for fetch
+    if (!nextItem.audioBuffer && !nextItem.isFetching) {
+      await prefetchAudioChunk(nextItem);
+    } else if (nextItem.isFetching) {
+      let attempts = 0;
+      while (nextItem.isFetching && attempts < 25) {
+        await new Promise(r => setTimeout(r, 30));
+        attempts++;
+      }
+    }
+
+    initAudioContext();
+
+    if (nextItem.audioBuffer && state.audioCtx) {
+      try {
+        if (state.audioCtx.state === 'suspended') await state.audioCtx.resume();
+        const source = state.audioCtx.createBufferSource();
+        source.buffer = nextItem.audioBuffer;
+
+        const gainNode = state.audioCtx.createGain();
+        gainNode.gain.value = Math.min(1.0, Math.max(0.0, state.voiceVolume));
+
+        if (state.analyserNode) {
+          source.connect(gainNode);
+          gainNode.connect(state.analyserNode);
+          state.analyserNode.connect(state.audioCtx.destination);
+        } else {
+          source.connect(gainNode);
+          gainNode.connect(state.audioCtx.destination);
+        }
+
+        currentAudioSource = source;
+        source.onended = () => {
+          currentAudioSource = null;
+          isSpeakingQueue = false;
+          if (speechQueue.length > 0) {
+            processSpeechQueue(); // Gapless immediate jump to next sentence!
+          } else {
+            setInteractionState('idle');
+            checkConversationalTurnArm();
+          }
+        };
+
+        source.start(0);
+        return;
+      } catch (err) {
+        console.warn('AudioBuffer gapless playback error:', err);
+      }
+    }
+
+    // Fallback if browser speech synthesis
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.resume(); } catch (e) {}
+
+      const utterance = new SpeechSynthesisUtterance(nextItem.text);
+      if (state.selectedVoice && !state.selectedVoice.isNeural) {
+        utterance.voice = state.selectedVoice;
+      }
+      utterance.rate = state.voiceRate;
+      utterance.pitch = state.voicePitch;
+      utterance.volume = Math.min(1.0, Math.max(0.0, state.voiceVolume));
+
+      utterance.onstart = () => {
+        setInteractionState('speaking');
+      };
+
+      utterance.onend = () => {
+        isSpeakingQueue = false;
+        if (speechQueue.length > 0) {
+          processSpeechQueue();
+        } else {
+          setInteractionState('idle');
+          checkConversationalTurnArm();
+        }
+      };
+
+      utterance.onerror = () => {
+        isSpeakingQueue = false;
+        if (speechQueue.length > 0) {
+          processSpeechQueue();
+        } else {
+          setInteractionState('idle');
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } else {
+      isSpeakingQueue = false;
+      if (speechQueue.length > 0) processSpeechQueue();
+      else setInteractionState('idle');
+    }
   }
 
   function speakResponse(text) {
-    if (!state.autoSpeak || !('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-
-    const speechText = text
-      .replace(/\*+/g, '')
-      .replace(/#+/g, '')
-      .replace(/`+/g, '')
-      .replace(/\[(.*?)\]\(.*?\)/g, '$1')
-      .trim();
-
-    if (!speechText) return;
-
-    const utterance = new SpeechSynthesisUtterance(speechText);
-    if (state.selectedVoice) utterance.voice = state.selectedVoice;
-    utterance.rate = state.voiceRate;
-    utterance.pitch = state.voicePitch;
-    utterance.volume = Math.min(1.0, Math.max(0.0, state.voiceVolume));
-
-    utterance.onstart = () => {
-      setInteractionState('speaking');
-    };
-
-    utterance.onend = () => {
-      setInteractionState('idle');
-    };
-
-    utterance.onerror = () => {
-      setInteractionState('idle');
-    };
-
-    window.speechSynthesis.speak(utterance);
+    cancelSpeech();
+    queueSpeechChunk(text);
   }
 
   function setInteractionState(mode) {
@@ -1446,13 +2019,15 @@
     });
   }
 
-  async function sendUserMessage(msgText) {
+  async function sendUserMessage(msgText, source = 'text') {
+    state.lastInputSource = source;
     const text = (msgText || (els.chatInput ? els.chatInput.value : '')).trim();
     if (!text) return;
 
     if (els.chatInput) els.chatInput.value = '';
     initAudioContext();
     sfx.click();
+    cancelSpeech();
 
     appendTranscript('user', text);
     state.history.push({ role: 'user', content: text });
@@ -1461,12 +2036,18 @@
     sfx.processing();
 
     const t0 = performance.now();
+    let firstTokenReceived = false;
+    let assistantBubble = null;
+    let fullResponseText = "";
+    let speechSentenceBuffer = "";
+
     try {
       const payload = {
         message: text,
         model: state.isScreenStreaming ? (state.activeVisionModel || state.activeModel) : state.activeModel,
         session_id: state.currentSessionId || 'default',
-        stream: false
+        language: state.currentLanguage || 'en',
+        stream: true
       };
 
       if (state.isScreenStreaming && lastLiveFrameData) {
@@ -1479,31 +2060,153 @@
         body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
-      state.latencyMs = Math.round(performance.now() - t0);
-      updateLatencyDisplay();
+      if (!res.ok) {
+        throw new Error(`Inference engine HTTP ${res.status}`);
+      }
 
-      if (res.ok && typeof data.response === 'string' && data.response.trim().length > 0) {
+      const contentType = res.headers.get('content-type') || '';
+      // Direct JSON response (e.g. from instant SQLite memory retrieval)
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        state.latencyMs = Math.round(performance.now() - t0);
+        updateLatencyDisplay();
         sfx.ready();
         state.history.push({ role: 'assistant', content: data.response });
         appendTranscript('assistant', data.response);
-        speakResponse(data.response);
-        loadTelemetry(); // refresh memory count
-        loadSessions();  // refresh saved chats titles & timestamps
-      } else if (res.ok) {
-        const fallbackText = "Protocol received. System operational.";
-        sfx.ready();
-        state.history.push({ role: 'assistant', content: fallbackText });
-        appendTranscript('assistant', fallbackText);
-        speakResponse(fallbackText);
+        queueSpeechChunk(data.response);
+        loadTelemetry();
         loadSessions();
-      } else {
-        appendTranscript('assistant', `Communication error: ${data.detail || data.error || 'Inference engine error'}`);
-        setInteractionState('idle');
+        return;
       }
+
+      // Create live assistant entry for token streaming
+      const entry = document.createElement('div');
+      entry.className = 'transcript-entry';
+      const header = document.createElement('div');
+      header.className = 'entry-header';
+      const roleSpan = document.createElement('span');
+      roleSpan.className = 'entry-role-assistant';
+      roleSpan.textContent = 'ORION';
+      const timeSpan = document.createElement('span');
+      const now = new Date();
+      timeSpan.textContent = now.toTimeString().split(' ')[0];
+      header.appendChild(roleSpan);
+      header.appendChild(timeSpan);
+
+      const activeModelName = payload.model || state.activeModel || 'Orion';
+      const loadingText = state.currentLanguage === 'he'
+        ? `⚡ טוען את מודל ${activeModelName}...`
+        : `⚡ Loading ${activeModelName} AI model...`;
+
+      assistantBubble = document.createElement('div');
+      assistantBubble.className = 'entry-bubble assistant streaming';
+      assistantBubble.textContent = loadingText;
+
+      entry.appendChild(header);
+      entry.appendChild(assistantBubble);
+      if (els.transcriptFeed) {
+        els.transcriptFeed.appendChild(entry);
+        els.transcriptFeed.scrollTop = els.transcriptFeed.scrollHeight;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const jsonStr = trimmed.replace(/^data:\s*/, '');
+          if (!jsonStr) continue;
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            if (parsed.error) {
+              if (assistantBubble) assistantBubble.classList.remove('streaming');
+              assistantBubble.textContent = `Error: ${parsed.error}`;
+              setInteractionState('idle');
+              return;
+            }
+
+            if (!firstTokenReceived && (parsed.chunk || parsed.ttft_ms)) {
+              firstTokenReceived = true;
+              state.ttftMs = parsed.ttft_ms || Math.round(performance.now() - t0);
+              state.latencyMs = state.ttftMs;
+              updateLatencyDisplay();
+              sfx.ready();
+              assistantBubble.textContent = '';
+            }
+
+            if (parsed.chunk) {
+              fullResponseText += parsed.chunk;
+              assistantBubble.textContent = fullResponseText;
+              speechSentenceBuffer += parsed.chunk;
+
+              if (els.transcriptFeed) {
+                els.transcriptFeed.scrollTop = els.transcriptFeed.scrollHeight;
+              }
+
+              // Extract completed sentences or conversational phrases for immediate vocalization
+              const extracted = extractReadySpeechChunk(speechSentenceBuffer);
+              if (extracted) {
+                speechSentenceBuffer = extracted.remainder;
+                queueSpeechChunk(extracted.chunk);
+              }
+            }
+
+            if (parsed.done) {
+              if (assistantBubble) {
+                assistantBubble.classList.remove('streaming');
+              }
+              if (speechSentenceBuffer.trim()) {
+                queueSpeechChunk(speechSentenceBuffer.trim());
+                speechSentenceBuffer = '';
+              }
+              const totalDuration = parsed.duration_ms || Math.round(performance.now() - t0);
+              updateLatencyDisplay(totalDuration);
+            }
+          } catch (err) {
+            console.warn('Stream token parse note:', err);
+          }
+        }
+      }
+
+      if (assistantBubble) {
+        assistantBubble.classList.remove('streaming');
+      }
+
+      if (speechSentenceBuffer.trim()) {
+        queueSpeechChunk(speechSentenceBuffer.trim());
+      }
+
+      if (assistantBubble && !fullResponseText.trim()) {
+        assistantBubble.textContent = 'Protocol acknowledged. System operational.';
+        fullResponseText = 'Protocol acknowledged. System operational.';
+      }
+
+      state.isProcessing = false;
+      state.history.push({ role: 'assistant', content: fullResponseText });
+      loadTelemetry();
+      loadSessions();
+      checkConversationalTurnArm();
     } catch (e) {
+      console.warn('Talk stream error:', e);
+      state.isProcessing = false;
       setInteractionState('idle');
-      appendTranscript('assistant', `Failed to reach Orion engine: ${e.message}`);
+      if (assistantBubble) {
+        assistantBubble.classList.remove('streaming');
+        assistantBubble.textContent = `Failed to stream Orion response: ${e.message}`;
+      } else {
+        appendTranscript('assistant', `Failed to reach Orion engine: ${e.message}`);
+      }
     }
   }
 
@@ -1537,9 +2240,15 @@
     els.transcriptFeed.scrollTop = els.transcriptFeed.scrollHeight;
   }
 
-  function updateLatencyDisplay() {
+  function updateLatencyDisplay(durationMs) {
     if (els.systemLatency) {
-      els.systemLatency.textContent = `${state.latencyMs}ms`;
+      if (state.ttftMs && durationMs && durationMs > state.ttftMs) {
+        els.systemLatency.textContent = `${state.ttftMs}ms (${(durationMs / 1000).toFixed(1)}s)`;
+      } else if (state.ttftMs) {
+        els.systemLatency.textContent = `${state.ttftMs}ms`;
+      } else {
+        els.systemLatency.textContent = `${state.latencyMs || '--'}ms`;
+      }
     }
   }
 
@@ -1585,58 +2294,68 @@
   // 7. SESSIONS & CONVERSATION LOG CONTROLLER
   // ==========================================================================
 
+  function renderSessionsList(sessions) {
+    if (!els.sessionsList) return;
+    els.sessionsList.innerHTML = '';
+
+    if (!sessions || sessions.length === 0) {
+      els.sessionsList.innerHTML = '<div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 16px 4px;">No matching conversations found.</div>';
+      return;
+    }
+
+    sessions.forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'session-item ' + (s.id === state.currentSessionId ? 'active' : '');
+      item.dataset.id = s.id;
+
+      const header = document.createElement('div');
+      header.className = 'session-item-header';
+
+      const title = document.createElement('div');
+      title.className = 'session-item-title';
+      title.textContent = s.title || 'Conversation';
+      title.title = s.title || 'Conversation';
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'session-del-icon';
+      delBtn.innerHTML = '&times;';
+      delBtn.title = 'Delete Session';
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteSessionItem(s.id);
+      });
+
+      header.appendChild(title);
+      header.appendChild(delBtn);
+
+      const meta = document.createElement('div');
+      meta.className = 'session-item-meta';
+      const dateStr = new Date(s.updated_at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      meta.innerHTML = `<span>${s.message_count || 0} msgs</span><span>${dateStr}</span>`;
+
+      item.appendChild(header);
+      item.appendChild(meta);
+
+      item.addEventListener('click', () => {
+        switchSession(s.id);
+      });
+
+      els.sessionsList.appendChild(item);
+    });
+  }
+
   async function loadSessions() {
     if (!els.sessionsList) return;
     try {
       const res = await fetch('/api/sessions');
       if (!res.ok) return;
       const data = await res.json();
-      els.sessionsList.innerHTML = '';
-
-      if (!data.sessions || data.sessions.length === 0) {
-        els.sessionsList.innerHTML = '<div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 16px 4px;">No saved conversations yet.</div>';
-        return;
-      }
-
-      data.sessions.forEach(s => {
-        const item = document.createElement('div');
-        item.className = 'session-item ' + (s.id === state.currentSessionId ? 'active' : '');
-        item.dataset.id = s.id;
-
-        const header = document.createElement('div');
-        header.className = 'session-item-header';
-
-        const title = document.createElement('div');
-        title.className = 'session-item-title';
-        title.textContent = s.title || 'Conversation';
-        title.title = s.title || 'Conversation';
-
-        const delBtn = document.createElement('button');
-        delBtn.className = 'session-del-icon';
-        delBtn.innerHTML = '&times;';
-        delBtn.title = 'Delete Session';
-        delBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          deleteSessionItem(s.id);
-        });
-
-        header.appendChild(title);
-        header.appendChild(delBtn);
-
-        const meta = document.createElement('div');
-        meta.className = 'session-item-meta';
-        const dateStr = new Date(s.updated_at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        meta.innerHTML = `<span>${s.message_count || 0} msgs</span><span>${dateStr}</span>`;
-
-        item.appendChild(header);
-        item.appendChild(meta);
-
-        item.addEventListener('click', () => {
-          switchSession(s.id);
-        });
-
-        els.sessionsList.appendChild(item);
-      });
+      state.allSessions = data.sessions || [];
+      const query = (els.sessionSearchInput ? els.sessionSearchInput.value : '').toLowerCase().trim();
+      const filtered = query
+        ? state.allSessions.filter(s => (s.title || '').toLowerCase().includes(query))
+        : state.allSessions;
+      renderSessionsList(filtered);
     } catch (e) {
       console.warn('Error loading sessions:', e);
     }
@@ -1801,13 +2520,34 @@
 
   function bindEvents() {
     if (els.interactionCore) els.interactionCore.addEventListener('click', toggleListening);
-    if (els.sendBtn) els.sendBtn.addEventListener('click', () => sendUserMessage());
+    if (els.sendBtn) els.sendBtn.addEventListener('click', () => sendUserMessage(undefined, 'text'));
     if (els.clearChatBtn) els.clearChatBtn.addEventListener('click', clearHistory);
     if (els.newSessionBtn) els.newSessionBtn.addEventListener('click', createNewSession);
 
     if (els.chatInput) {
+      els.chatInput.addEventListener('focus', () => {
+        state.continuousConversation = false;
+        if (state.isListening) {
+          stopListening();
+        }
+      });
+      els.chatInput.addEventListener('input', () => {
+        state.continuousConversation = false;
+        if (state.isListening) {
+          stopListening();
+        }
+      });
       els.chatInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') sendUserMessage();
+        state.continuousConversation = false;
+        if (state.isListening) {
+          stopListening();
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          sendUserMessage(undefined, 'text');
+        } else if (e.code === 'Space' || e.key === ' ') {
+          e.stopPropagation();
+        }
       });
     }
 
@@ -2138,7 +2878,8 @@
     if (els.voiceSelect) {
       els.voiceSelect.addEventListener('change', (e) => {
         const vName = e.target.value;
-        const voice = state.availableVoices.find(v => v.name === vName);
+        const voice = NEURAL_TTS_VOICES.find(v => v.name === vName) ||
+          (state.availableVoices && state.availableVoices.find(v => v.name === vName));
         if (voice) {
           state.selectedVoice = voice;
           saveSettings();
@@ -2173,7 +2914,26 @@
 
     if (els.testVoiceBtn) {
       els.testVoiceBtn.addEventListener('click', () => {
-        speakResponse('Orion vocal transmission test. Frequency nominal, speech synthesis operational.');
+        const testPhrase = (state.currentLanguage === 'he' || (state.selectedVoice && state.selectedVoice.lang && state.selectedVoice.lang.startsWith('he')))
+          ? 'בדיקת קול אוריון. תדרי שמע תקינים, מערכת סינתזת דיבור פעילה ומכוילת.'
+          : 'Orion vocal transmission test. Frequency nominal, speech synthesis operational.';
+        speakResponse(testPhrase);
+      });
+    }
+
+    // Real-time Chat Search Filter
+    if (els.sessionSearchInput) {
+      els.sessionSearchInput.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.key === ' ') {
+          e.stopPropagation();
+        }
+      });
+      els.sessionSearchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        const filtered = query
+          ? (state.allSessions || []).filter(s => (s.title || '').toLowerCase().includes(query))
+          : (state.allSessions || []);
+        renderSessionsList(filtered);
       });
     }
 
@@ -2200,23 +2960,130 @@
       });
     });
 
-    // Spacebar Push-to-Talk
+    // Language Switcher in Header
+    if (els.languageSelect) {
+      els.languageSelect.addEventListener('change', (e) => {
+        state.currentLanguage = e.target.value;
+        if (state.speechRecognition) {
+          state.speechRecognition.lang = state.currentLanguage === 'he' ? 'he-IL' : 'en-US';
+        }
+        if (state.currentLanguage === 'he') {
+          state.voiceCategory = 'hebrew';
+          if (els.voiceCategorySelect) els.voiceCategorySelect.value = 'hebrew';
+          state.selectedVoice = NEURAL_TTS_VOICES.find(v => v.id === 'he-IL-AvriNeural');
+        } else {
+          state.voiceCategory = 'natural';
+          if (els.voiceCategorySelect) els.voiceCategorySelect.value = 'natural';
+          state.selectedVoice = NEURAL_TTS_VOICES.find(v => v.id === 'en-GB-RyanNeural');
+        }
+        populateVoiceSelect();
+        saveSettings();
+        sfx.activate();
+      });
+    }
+
+    // Spacebar Mode Selector in Quick Controls
+    if (els.spacebarModeSelect) {
+      els.spacebarModeSelect.addEventListener('change', (e) => {
+        state.spacebarMode = e.target.value;
+        saveSettings();
+      });
+    }
+
+    function isEditableElement(el) {
+      if (!el) return false;
+      const tag = (el.tagName || '').toUpperCase();
+      return tag === 'INPUT' || tag === 'TEXTAREA' || !!el.isContentEditable;
+    }
+
+    // Spacebar Activation (Hold vs Press/Toggle Mode)
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        state.continuousConversation = false;
+        if (conversationalSleepTimer) clearTimeout(conversationalSleepTimer);
+        cancelSpeech();
+        stopListening();
+        setInteractionState('idle');
+        updateVoiceHearingBadge('', false);
         if (els.settingsModalBackdrop) els.settingsModalBackdrop.classList.remove('open');
         stopMicTest();
         return;
       }
-      if (e.code === 'Space' && document.activeElement !== els.chatInput && document.activeElement !== els.newMemoryInput) {
+
+      // If user is currently typing in an input/textarea, do NOT hijack Spacebar
+      if (isEditableElement(e.target) || isEditableElement(document.activeElement)) {
+        return;
+      }
+
+      if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
-        if (!state.isListening) startListening();
+        // Blur any focused buttons or dropdowns so Space doesn't re-click them
+        if (document.activeElement && document.activeElement !== document.body) {
+          document.activeElement.blur();
+        }
+        if (state.spacebarMode === 'toggle') {
+          if (e.repeat) return; // Prevent key repeat firing repeatedly
+          toggleListening();
+        } else {
+          // Push-to-Talk Hold mode
+          if (!state.isListening) startListening();
+        }
       }
     });
 
+    if (els.testVoiceInputBtn) {
+      els.testVoiceInputBtn.addEventListener('click', async () => {
+        initAudioContext();
+        if (els.voiceDiagTranscript) {
+          els.voiceDiagTranscript.textContent = 'Listening for speech (5 seconds)... Speak into your microphone now!';
+        }
+        if (els.voiceDiagStatus) {
+          els.voiceDiagStatus.textContent = 'RECORDING (5s)...';
+          els.voiceDiagStatus.style.color = 'var(--ice-blue)';
+        }
+        await startListening();
+        setTimeout(async () => {
+          if (state.isListening) {
+            const webSpeechResult = (pendingVoiceTranscript + ' ' + currentInterimTranscript).trim();
+            pendingVoiceTranscript = '';
+            currentInterimTranscript = '';
+            await stopListening();
+
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+              mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(recordedAudioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                recordedAudioChunks = [];
+                let result = webSpeechResult;
+                if (!result || result.length < 2) {
+                  result = await sendLocalAudioForTranscription(audioBlob);
+                }
+                if (els.voiceDiagTranscript) {
+                  els.voiceDiagTranscript.textContent = result
+                    ? `✓ 100% Local Whisper Decoded: "${result}"`
+                    : '⚠️ No speech detected. Please verify microphone selection and speak louder.';
+                }
+                if (els.voiceDiagStatus) {
+                  els.voiceDiagStatus.textContent = result ? 'WHISPER VERIFIED ✓' : 'NO SPEECH';
+                  els.voiceDiagStatus.style.color = result ? 'var(--emerald-nominal)' : 'var(--crimson-alert)';
+                }
+              };
+              try { mediaRecorder.stop(); } catch (e) {}
+            }
+          }
+        }, 5000);
+      });
+    }
+
     window.addEventListener('keyup', (e) => {
-      if (e.code === 'Space' && document.activeElement !== els.chatInput && document.activeElement !== els.newMemoryInput) {
+      if (isEditableElement(e.target) || isEditableElement(document.activeElement)) {
+        return;
+      }
+
+      if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
-        if (state.isListening) stopListening();
+        if (state.spacebarMode === 'hold') {
+          finishAndDispatchVoice();
+        }
       }
     });
 
@@ -2243,7 +3110,10 @@
     state.currentSessionId = 'session_' + Date.now();
     state.history = [];
     if (els.transcriptFeed) els.transcriptFeed.innerHTML = '';
-    appendTranscript('assistant', 'Orion standalone core online. Ready for tactical instructions.');
+    const initialGreeting = state.currentLanguage === 'he'
+      ? 'ליבת אוריון מקוונת ומוכנה. ממתין להוראות.'
+      : 'Orion standalone core online. Ready for tactical instructions.';
+    appendTranscript('assistant', initialGreeting);
   });
 
 })();

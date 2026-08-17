@@ -45,16 +45,14 @@
             <option value="llava:latest">llava:latest</option>
           </select>
         </div>
-      </div>
 
-      <!-- Slide Wing Controls (Between Vision and Settings) -->
-      <div class="hud-slider-controls">
-        <button class="btn-hud" id="toggleLeftWingBtn" title="Slide / Toggle System Diagnostics, Optical Sensors & Tactical Protocols">
-          ◂ SENSORS & DIAGNOSTICS
-        </button>
-        <button class="btn-hud" id="toggleRightWingBtn" title="Slide / Toggle Tactical Feed & Saved Chats">
-          FEED & CHATS ▸
-        </button>
+        <div class="model-selector-wrapper">
+          <label for="languageSelect" class="brand-subtitle">LANGUAGE:</label>
+          <select id="languageSelect" class="hud-select" aria-label="Select Conversational Language">
+            <option value="en" selected>English (EN)</option>
+            <option value="he">Hebrew (עברית)</option>
+          </select>
+        </div>
       </div>
 
       <div class="hud-right-group">
@@ -203,6 +201,13 @@
             <!-- Transcript entries inserted dynamically -->
           </div>
 
+          <!-- Live Voice Radar Bar -->
+          <div class="voice-radar-bar" id="voiceRadarBar" style="display: none;">
+            <div class="radar-dot"></div>
+            <div class="voice-radar-label">HEARING:</div>
+            <div class="voice-radar-text" id="voiceRadarText">Listening...</div>
+          </div>
+
           <!-- Input bar fallback -->
           <div class="input-composer" id="composerBar">
             <input 
@@ -225,6 +230,9 @@
           <div class="panel-header">
             <span class="panel-title">Saved Chats</span>
             <button class="btn-hud-tiny primary" id="newSessionBtn" title="Start a fresh conversation">+ New Chat</button>
+          </div>
+          <div class="session-search-wrapper">
+            <input type="text" id="sessionSearchInput" class="session-search-input" placeholder="🔍 Search saved chats...">
           </div>
           <div class="sessions-list" id="sessionsList">
             <!-- Dynamic session items inserted dynamically -->
@@ -280,6 +288,17 @@
                 <span class="control-desc">Interface audio feedback, clicks, and processing chimes</span>
               </div>
               <button class="btn-hud" id="muteToggleSettings">SFX: ON</button>
+            </div>
+
+            <div class="control-card">
+              <div class="control-card-header">
+                <span class="control-title">Spacebar Mic Activation</span>
+                <span class="control-desc">Choose between Push-to-Talk (Hold) or Toggle Mode (Press once to start, press again to stop)</span>
+              </div>
+              <select class="io-select" id="spacebarModeSelect" style="max-width: 200px;">
+                <option value="toggle" selected>Press (Toggle On/Off)</option>
+                <option value="hold">Hold (Push-to-Talk)</option>
+              </select>
             </div>
 
             <div class="control-card">
@@ -419,6 +438,20 @@
                 <div class="mic-meter-fill" id="micMeterFill"></div>
               </div>
             </div>
+
+            <!-- Voice Recognition Live Diagnostic Box -->
+            <div class="voice-diag-box" id="voiceDiagBox">
+              <div class="voice-diag-header">
+                <span>🎙️ SPEECH RECOGNITION LIVE UNDERSTANDING</span>
+                <span id="voiceDiagStatus" style="color: var(--emerald-nominal);">IDLE</span>
+              </div>
+              <div class="voice-diag-transcript" id="voiceDiagTranscript">
+                Hold Spacebar or click "Test Speech Input" to speak and see exactly what words Orion decodes from your microphone...
+              </div>
+              <button class="btn-hud-tiny primary" id="testVoiceInputBtn" style="margin-top: 6px; align-self: flex-start;">
+                Test Speech Input (5s)
+              </button>
+            </div>
           </div>
 
           <!-- Audio Output -->
@@ -442,8 +475,9 @@
               <span id="voiceCountLabel">-- voices</span>
             </label>
             <div style="display: flex; gap: 6px;">
-              <select id="voiceCategorySelect" class="io-select" style="width: 140px;" aria-label="Filter Voice Categories">
+              <select id="voiceCategorySelect" class="io-select" style="width: 150px;" aria-label="Filter Voice Categories">
                 <option value="natural" selected>Natural / Neural</option>
+                <option value="hebrew">Hebrew (עברית)</option>
                 <option value="en-gb">British English</option>
                 <option value="en-us">US English</option>
                 <option value="all">All Voices</option>
@@ -506,6 +540,6 @@
     </div>
   </div>
 
-  <script src="/static/js/orion.js"></script>
+  <script src="/static/js/orion.js?v=3.6"></script>
 </body>
 </html>

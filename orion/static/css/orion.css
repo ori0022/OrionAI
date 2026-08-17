@@ -222,6 +222,10 @@ body::before {
   background: rgba(14, 20, 30, 0.95);
 }
 
+#languageSelect {
+  min-width: 180px;
+}
+
 /* ==========================================================================
    BUTTONS
    ========================================================================== */
@@ -406,6 +410,29 @@ body::before {
   gap: 6px;
   padding-right: 4px;
   min-height: 0;
+}
+
+.session-search-wrapper {
+  padding: 6px 8px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.session-search-input {
+  width: 100%;
+  background: rgba(6, 9, 14, 0.9);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-primary);
+  outline: none;
+  transition: var(--transition-fast);
+}
+
+.session-search-input:focus {
+  border-color: var(--border-active);
+  background: rgba(10, 16, 26, 0.95);
 }
 
 .sessions-list::-webkit-scrollbar {
@@ -898,6 +925,8 @@ body::before {
   color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
+  unicode-bidi: plaintext;
+  text-align: start;
 }
 
 .entry-bubble.user {
@@ -908,6 +937,19 @@ body::before {
 .entry-bubble.assistant {
   background: rgba(86, 204, 242, 0.06);
   border-color: rgba(86, 204, 242, 0.2);
+}
+
+.entry-bubble.assistant.streaming::after {
+  content: '▋';
+  color: var(--ice-blue);
+  animation: caretBlink 0.8s infinite;
+  margin-left: 3px;
+  font-size: 11px;
+}
+
+@keyframes caretBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 .input-composer {
@@ -927,6 +969,8 @@ body::before {
   font-family: var(--font-sans);
   font-size: 12px;
   outline: none;
+  unicode-bidi: plaintext;
+  text-align: start;
   transition: var(--transition-fast);
 }
 
@@ -947,6 +991,97 @@ body::before {
 
 .composer-btn:hover {
   background: rgba(86, 204, 242, 0.25);
+}
+
+/* Voice Radar Live Indicator */
+.voice-radar-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(86, 204, 242, 0.08);
+  border: 1px solid rgba(86, 204, 242, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  animation: radarGlow 1.8s infinite alternate;
+}
+
+@keyframes radarGlow {
+  0% { border-color: rgba(86, 204, 242, 0.25); box-shadow: 0 0 4px rgba(86, 204, 242, 0.1); }
+  100% { border-color: rgba(86, 204, 242, 0.55); box-shadow: 0 0 12px rgba(86, 204, 242, 0.25); }
+}
+
+.radar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #56ccf2;
+  box-shadow: 0 0 8px #56ccf2;
+  animation: pulseDot 1s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.6; }
+}
+
+.voice-radar-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ice-blue);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.voice-radar-text {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: #ffffff;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.4;
+  flex: 1;
+  unicode-bidi: plaintext;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+/* Voice Diagnostic Box in Settings */
+.voice-diag-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #090c12;
+  border: 1px solid rgba(86, 204, 242, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-top: 8px;
+}
+
+.voice-diag-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ice-blue);
+  letter-spacing: 0.5px;
+}
+
+.voice-diag-transcript {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-highlight);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px dashed rgba(86, 204, 242, 0.2);
+  border-radius: 4px;
+  padding: 8px 10px;
+  min-height: 38px;
+  line-height: 1.4;
+  word-break: break-word;
+  unicode-bidi: plaintext;
 }
 
 /* ==========================================================================
