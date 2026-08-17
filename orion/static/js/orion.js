@@ -162,15 +162,16 @@
     els.hudMain = document.getElementById('hudMain');
     els.hudLeftWing = document.getElementById('hudLeftWing');
     els.hudRightWing = document.getElementById('hudRightWing');
+    els.hudSessionsWing = document.getElementById('hudSessionsWing');
     els.toggleLeftWingBtn = document.getElementById('toggleLeftWingBtn');
-    els.toggleRightWingBtn = document.getElementById('toggleRightWingBtn');
     els.collapseLeftBtn = document.getElementById('collapseLeftBtn');
-    els.collapseRightBtn = document.getElementById('collapseRightBtn');
+    els.collapseFeedBtn = document.getElementById('collapseFeedBtn');
+    els.collapseSessionsBtn = document.getElementById('collapseSessionsBtn');
     els.leftDockTab = document.getElementById('leftDockTab');
-    els.rightDockTab = document.getElementById('rightDockTab');
+    els.feedDockTab = document.getElementById('feedDockTab');
+    els.sessionsDockTab = document.getElementById('sessionsDockTab');
 
     // Sessions Wing
-    els.hudSessionsWing = document.getElementById('hudSessionsWing');
     els.sessionsList = document.getElementById('sessionsList');
     els.newSessionBtn = document.getElementById('newSessionBtn');
     els.sessionSearchInput = document.getElementById('sessionSearchInput');
@@ -844,7 +845,8 @@
       streamFps: state.streamFps,
       spacebarMode: state.spacebarMode,
       leftCollapsed: state.leftCollapsed,
-      rightCollapsed: state.rightCollapsed
+      feedCollapsed: state.feedCollapsed,
+      sessionsCollapsed: state.sessionsCollapsed
     };
     try {
       localStorage.setItem('orion_config_v2', JSON.stringify(settings));
@@ -895,10 +897,13 @@
         if (els.hudMain) els.hudMain.classList.toggle('left-collapsed', state.leftCollapsed);
         if (els.toggleLeftWingBtn) els.toggleLeftWingBtn.textContent = state.leftCollapsed ? 'SENSORS ▸' : '◂ SENSORS';
       }
-      if (s.rightCollapsed !== undefined) {
-        state.rightCollapsed = Boolean(s.rightCollapsed);
-        if (els.hudMain) els.hudMain.classList.toggle('right-collapsed', state.rightCollapsed);
-        if (els.toggleRightWingBtn) els.toggleRightWingBtn.textContent = state.rightCollapsed ? '◂ FEED & CHATS' : 'FEED & CHATS ▸';
+      if (s.feedCollapsed !== undefined) {
+        state.feedCollapsed = Boolean(s.feedCollapsed);
+        if (els.hudMain) els.hudMain.classList.toggle('feed-collapsed', state.feedCollapsed);
+      }
+      if (s.sessionsCollapsed !== undefined) {
+        state.sessionsCollapsed = Boolean(s.sessionsCollapsed);
+        if (els.hudMain) els.hudMain.classList.toggle('sessions-collapsed', state.sessionsCollapsed);
       }
 
       if (s.voiceName && state.availableVoices && state.availableVoices.length > 0) {
@@ -941,13 +946,11 @@
       }
       if (els.hudMain) {
         els.hudMain.classList.toggle('left-collapsed', !!state.leftCollapsed);
-        els.hudMain.classList.toggle('right-collapsed', !!state.rightCollapsed);
+        els.hudMain.classList.toggle('feed-collapsed', !!state.feedCollapsed);
+        els.hudMain.classList.toggle('sessions-collapsed', !!state.sessionsCollapsed);
       }
       if (els.toggleLeftWingBtn) {
         els.toggleLeftWingBtn.textContent = state.leftCollapsed ? 'SENSORS ▸' : '◂ SENSORS';
-      }
-      if (els.toggleRightWingBtn) {
-        els.toggleRightWingBtn.textContent = state.rightCollapsed ? '◂ FEED & CHATS' : 'FEED & CHATS ▸';
       }
     } catch (e) {
       console.warn('Settings load error:', e);
@@ -964,21 +967,26 @@
     }
     saveSettings();
     initAudioContext();
-    sfx.click();
     setTimeout(() => resizeCanvas(), 360);
   }
 
-  function toggleRightWing(force) {
-    state.rightCollapsed = force !== undefined ? force : !state.rightCollapsed;
+  function toggleFeedPanel(force) {
+    state.feedCollapsed = force !== undefined ? force : !state.feedCollapsed;
     if (els.hudMain) {
-      els.hudMain.classList.toggle('right-collapsed', state.rightCollapsed);
-    }
-    if (els.toggleRightWingBtn) {
-      els.toggleRightWingBtn.textContent = state.rightCollapsed ? '◂ FEED & CHATS' : 'FEED & CHATS ▸';
+      els.hudMain.classList.toggle('feed-collapsed', state.feedCollapsed);
     }
     saveSettings();
     initAudioContext();
-    sfx.click();
+    setTimeout(() => resizeCanvas(), 360);
+  }
+
+  function toggleSessionsPanel(force) {
+    state.sessionsCollapsed = force !== undefined ? force : !state.sessionsCollapsed;
+    if (els.hudMain) {
+      els.hudMain.classList.toggle('sessions-collapsed', state.sessionsCollapsed);
+    }
+    saveSettings();
+    initAudioContext();
     setTimeout(() => resizeCanvas(), 360);
   }
 
@@ -2644,9 +2652,11 @@
     if (els.collapseLeftBtn) els.collapseLeftBtn.addEventListener('click', () => toggleLeftWing(true));
     if (els.leftDockTab) els.leftDockTab.addEventListener('click', () => toggleLeftWing(false));
 
-    if (els.toggleRightWingBtn) els.toggleRightWingBtn.addEventListener('click', () => toggleRightWing());
-    if (els.collapseRightBtn) els.collapseRightBtn.addEventListener('click', () => toggleRightWing(true));
-    if (els.rightDockTab) els.rightDockTab.addEventListener('click', () => toggleRightWing(false));
+    if (els.collapseFeedBtn) els.collapseFeedBtn.addEventListener('click', () => toggleFeedPanel(true));
+    if (els.feedDockTab) els.feedDockTab.addEventListener('click', () => toggleFeedPanel(false));
+
+    if (els.collapseSessionsBtn) els.collapseSessionsBtn.addEventListener('click', () => toggleSessionsPanel(true));
+    if (els.sessionsDockTab) els.sessionsDockTab.addEventListener('click', () => toggleSessionsPanel(false));
 
     if (els.muteToggle) {
       els.muteToggle.addEventListener('click', () => {

@@ -280,6 +280,9 @@ body::before {
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.2;
 }
 
 .btn-hud-tiny:hover {
@@ -294,7 +297,7 @@ body::before {
 .hud-main {
   flex: 1;
   display: grid;
-  grid-template-columns: 250px 1fr 310px 220px;
+  grid-template-columns: 250px 1fr 310px 250px;
   gap: 12px;
   min-height: 0;
   position: relative;
@@ -303,7 +306,31 @@ body::before {
 
 /* Left panels collapsed state */
 .hud-main.left-collapsed {
-  grid-template-columns: 0px 1fr 310px 220px;
+  grid-template-columns: 0px 1fr 310px 250px;
+}
+
+/* Feed collapsed alone */
+.hud-main.feed-collapsed {
+  grid-template-columns: 250px 1fr 0px 250px;
+}
+.hud-main.left-collapsed.feed-collapsed {
+  grid-template-columns: 0px 1fr 0px 250px;
+}
+
+/* Sessions collapsed alone */
+.hud-main.sessions-collapsed {
+  grid-template-columns: 250px 1fr 310px 0px;
+}
+.hud-main.left-collapsed.sessions-collapsed {
+  grid-template-columns: 0px 1fr 310px 0px;
+}
+
+/* Both feed and sessions collapsed */
+.hud-main.feed-collapsed.sessions-collapsed {
+  grid-template-columns: 250px 1fr 0px 0px;
+}
+.hud-main.left-collapsed.feed-collapsed.sessions-collapsed {
+  grid-template-columns: 0px 1fr 0px 0px;
 }
 
 .hud-main.left-collapsed .hud-wing-left {
@@ -315,13 +342,7 @@ body::before {
   visibility: hidden;
 }
 
-/* Right panels collapsed state (Tactical Feed + Saved Chats) */
-.hud-main.right-collapsed {
-  grid-template-columns: 250px 1fr 0px 0px;
-}
-
-.hud-main.right-collapsed .hud-wing-right,
-.hud-main.right-collapsed .hud-wing-sessions {
+.hud-main.feed-collapsed .hud-wing-right {
   opacity: 0;
   transform: translateX(40px);
   pointer-events: none;
@@ -330,9 +351,13 @@ body::before {
   visibility: hidden;
 }
 
-/* Both sides collapsed (Full Focus Mode) */
-.hud-main.left-collapsed.right-collapsed {
-  grid-template-columns: 0px 1fr 0px 0px;
+.hud-main.sessions-collapsed .hud-wing-sessions {
+  opacity: 0;
+  transform: translateX(40px);
+  pointer-events: none;
+  overflow: hidden;
+  padding: 0;
+  visibility: hidden;
 }
 
 .hud-wing-left, .hud-wing-right, .hud-wing-sessions {
@@ -380,8 +405,17 @@ body::before {
   border-bottom-left-radius: 0;
 }
 
-.hud-edge-tab.right-tab {
+.hud-edge-tab.right-feed-tab {
   right: -8px;
+  top: 38%;
+  border-right: none;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.hud-edge-tab.right-sessions-tab {
+  right: -8px;
+  top: 65%;
   border-right: none;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
@@ -391,7 +425,11 @@ body::before {
   display: flex;
 }
 
-.hud-main.right-collapsed .hud-edge-tab.right-tab {
+.hud-main.feed-collapsed .hud-edge-tab.right-feed-tab {
+  display: flex;
+}
+
+.hud-main.sessions-collapsed .hud-edge-tab.right-sessions-tab {
   display: flex;
 }
 
@@ -534,6 +572,8 @@ body::before {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .telemetry-row {

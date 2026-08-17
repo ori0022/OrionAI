@@ -67,7 +67,8 @@
 
       <!-- Collapsed Edge Dock Tabs -->
       <button class="hud-edge-tab left-tab" id="leftDockTab" title="Slide in Diagnostics, Optical Sensors & Protocols">▸ SENSORS & DIAGNOSTICS</button>
-      <button class="hud-edge-tab right-tab" id="rightDockTab" title="Slide in Tactical Feed & Saved Chats">◂ FEED & SAVED CHATS</button>
+      <button class="hud-edge-tab right-feed-tab" id="feedDockTab" title="Slide in Tactical Feed">◂ FEED</button>
+      <button class="hud-edge-tab right-sessions-tab" id="sessionsDockTab" title="Slide in Saved Chats">◂ CHATS</button>
       
       <!-- Left Wing: Vitals & Optical Sensors -->
       <aside class="hud-wing-left" id="hudLeftWing">
@@ -193,7 +194,7 @@
             <span class="panel-title">Tactical Feed</span>
             <div style="display: flex; gap: 6px;">
               <button class="btn-hud-tiny" id="clearChatBtn" title="Clear Conversation Log">Clear</button>
-              <button class="btn-hud-tiny" id="collapseRightBtn" title="Slide Right Panels Offscreen">Slide ▸</button>
+              <button class="btn-hud-tiny" id="collapseFeedBtn" title="Slide Tactical Feed Offscreen">Slide ▸</button>
             </div>
           </div>
           
@@ -229,7 +230,10 @@
         <section class="hud-panel sessions-panel" id="sessionsPanel">
           <div class="panel-header">
             <span class="panel-title">Saved Chats</span>
-            <button class="btn-hud-tiny primary" id="newSessionBtn" title="Start a fresh conversation">+ New Chat</button>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn-hud-tiny primary" id="newSessionBtn" title="Start a fresh conversation">New Chat</button>
+              <button class="btn-hud-tiny" id="collapseSessionsBtn" title="Slide Saved Chats Offscreen">Slide ▸</button>
+            </div>
           </div>
           <div class="session-search-wrapper">
             <input type="text" id="sessionSearchInput" class="session-search-input" placeholder="🔍 Search saved chats...">
@@ -540,6 +544,6 @@
     </div>
   </div>
 
-  <script src="/static/js/orion.js?v=3.6"></script>
+  <script src="/static/js/orion.js?v=3.9"></script>
 </body>
 </html>
